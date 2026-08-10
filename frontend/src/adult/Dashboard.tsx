@@ -71,6 +71,7 @@ export default function Dashboard({ lang }: Props) {
     lang === "ar" ? sk.name_ar : sk.name_en;
   const cognitive = progress?.skills.filter((x) => x.category === "cognitive") ?? [];
   const daily = progress?.skills.filter((x) => x.category === "daily_life") ?? [];
+  const social = progress?.skills.filter((x) => x.category === "social") ?? [];
 
   async function addGoal() {
     if (selected === null || newGoalSkillId === "") return;
@@ -132,6 +133,7 @@ export default function Dashboard({ lang }: Props) {
 
               <SkillGroup title={s.cognitive} skills={cognitive} name={name} s={s} />
               <SkillGroup title={s.dailyLife} skills={daily} name={name} s={s} />
+              <SkillGroup title={s.social} skills={social} name={name} s={s} />
 
               {/* Goals — adult-set, nudge exercise selection but never
                   restrict it (see backend adaptive_engine.select_next_exercise) */}

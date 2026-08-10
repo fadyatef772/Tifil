@@ -253,12 +253,61 @@ touch targets.
 
 **Seed.** `seed()` is level-granular and idempotent: it adds any newly
 defined level/skill to an existing database without touching what's there,
-so re-running it after this change added the new levels and five new skills
-(colors/numbers/handwashing/dressing gained level 3; shapes, animals,
-emotions, body_parts, morning_routine were added) to a real `tifl.db` with
-no migration and no data loss. New-type exercises store
-`correct_option_id = "n/a"` (a non-nullable column predating the pluggable
-system; the real truth lives inside each type's `options`).
+so re-running it against a real `tifl.db` grew the curriculum from 9 to 14
+skills and 58 to 83 exercises with no migration and no data loss. The
+curriculum now spans three categories — `cognitive`, `daily_life`, and
+`social` — across the four exercise types (see "Curriculum content" below).
+New-type exercises store `correct_option_id = "n/a"` (a non-nullable column
+predating the pluggable system; the real truth lives inside each type's
+`options`).
+
+---
+
+## Curriculum content and content caveats
+
+The starter curriculum has **14 skills in three categories**, bilingual
+ar/en, across the four exercise types. Levels and exercise counts per skill
+(24 levels, 83 exercises total):
+
+| category | skill | levels | exercises |
+|---|---|---|---|
+| `cognitive` | Colors (colors) | 3 | 8 |
+| `cognitive` | Numbers (numbers) | 3 | 7 |
+| `daily_life` | Washing hands (handwashing) | 3 | 6 |
+| `daily_life` | Getting dressed (dressing) | 3 | 4 |
+| `cognitive` | Shapes (shapes) | 3 | 8 |
+| `cognitive` | Animals (animals) | 3 | 7 |
+| `cognitive` | Feelings (emotions) | 3 | 7 |
+| `daily_life` | Our body (body_parts) | 2 | 6 |
+| `daily_life` | Morning routine (morning_routine) | 3 | 5 |
+| `social` | Greetings (greetings) | 2 | 5 |
+| `social` | Taking turns (turn_taking) | 2 | 4 |
+| `cognitive` | Picture memory (memory_pairs) | 2 | 4 |
+| `cognitive` | Let's remember (recall) | 2 | 6 |
+| `cognitive` | Picture naming (picture_naming) | 2 | 6 |
+
+The three `social`-category skills are new: **Greetings** (say hi / good
+morning / bye — matching or choosing the right greeting for the situation),
+**Taking turns** (order the 3-step routine of asking → waiting → receiving),
+and the two memory skills sit in `cognitive`: **Picture memory** (flip and
+match pairs) and **Let's remember** (see three items, then choose which one
+was there) — all implemented with the existing pluggable types.
+
+**Content caveats (read before extending):**
+
+- **`emotions` is basic recognition, not assessment.** It is face-to-word
+  recognition of happy/sad/angry/scared emojis (choice + matching) only. It
+  never draws any conclusion about a child's feelings or wellbeing. Emotion
+  content should be reviewed by a specialist (psychologist or
+  special-education therapist) before use.
+- **`picture_naming` is word recognition, not speech therapy.** The child
+  sees an emoji and picks (or optionally says) the matching written word.
+  Real speech and pronunciation practice must be designed with a speech
+  therapist. The optional 🎤 button reuses the existing choice speech-answer
+  flow unchanged — incidental, not a claim of speech training.
+- **`turn_taking` is sequencing, not social evaluation.** It teaches a
+  3-step routine by ordering only; it never judges a child's social
+  behavior.
 
 ---
 

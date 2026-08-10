@@ -17,6 +17,11 @@ const ICON_EMOJI: Record<string, string> = {
   smile: "😊",
   hand: "🖐️",
   sun: "☀️",
+  wave: "👋",
+  handshake: "🤝",
+  memory: "🧠",
+  magnifier: "🔎",
+  picture: "🖼️",
 };
 const FALLBACK_ICON = "⭐";
 

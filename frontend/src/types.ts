@@ -68,7 +68,7 @@ export interface SkillProgress {
   skill_key: string;
   name_ar: string;
   name_en: string;
-  category: "cognitive" | "daily_life";
+  category: "cognitive" | "daily_life" | "social";
   current_level: number;
   highest_mastered: number;
   total_levels: number;

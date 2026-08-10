@@ -61,8 +61,12 @@ def main():
     print(f"First exercise skill: {first['exercise']['skill_key']} "
           f"(level {first['exercise']['level']})")
 
-    # 3. Answer 40 correctly and confirm at least one level-up fired
-    results = answer_correctly(cid, 40)
+    # 3. Answer 60 correctly and confirm at least one level-up fired.
+    #    (Calibrated to the full curriculum: the engine rotates across all
+    #    skills, so 60 answers guarantee ~4+ correct answers on at least one
+    #    skill — the mastery_window/mastery_correct promotion threshold.
+    #    Raised from 40 when 5 more skills were added to the seed.)
+    results = answer_correctly(cid, 60)
     level_ups = [r for r in results if r["leveled_up"]]
     print(f"Answered {len(results)} correctly; {len(level_ups)} level-up(s):")
     for lu in level_ups:

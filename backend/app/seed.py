@@ -1,11 +1,22 @@
 """Seed the database with a starter curriculum.
 
-Two categories, bilingual throughout, across four pluggable exercise types
-(see app/services/exercise_types/): choice, matching, sequencing, tracing.
+Categories: cognitive, daily_life, and social (see the "social" skills below).
+Bilingual throughout, across four pluggable exercise types (see
+app/services/exercise_types/): choice, matching, sequencing, tracing.
 Visuals are emoji, hex colors, or words so the MVP runs with zero binary
 assets — in production these `visual` fields would point at real photos or
 illustrator-drawn cards, which is the single biggest quality upgrade this
 app can get.
+
+CONTENT CAVEATS (please read before extending):
+  * Emotion content (`emotions` skill) is basic face/word recognition only —
+    NOT emotional assessment — and should be reviewed by a specialist.
+  * Word/naming content (`picture_naming`) is simple word-recognition only,
+    NOT speech therapy; real speech/pronunciation practice must be designed
+    with a speech therapist. The optional mic reuses the existing
+    speech-answer flow unchanged and is incidental, not a training claim.
+  * Social content (`greetings`, `turn_taking`) is vocabulary/sequencing
+    practice only — it never evaluates a child's social behavior.
 
 Run:  python -m app.seed   (adds any missing skills/levels idempotently)
       python -m app.seed --reset  (drops the whole db first — WIPES data)
@@ -674,6 +685,12 @@ CURRICULUM = [
         ],
     },
     {
+        # --- Feelings recognition (basic) ------------------------------------
+        # REVIEW CAVEAT: this is basic recognition of happy/sad/angry/scared
+        # faces (choice) and matching a face to its word — it is NOT an
+        # emotional assessment and must not be read as one. Emotion content
+        # like this should be reviewed by a specialist (psychologist or
+        # special-education therapist) before use with real children.
         "key": "emotions",
         "category": "cognitive",
         "name_ar": "المشاعر",
@@ -924,6 +941,399 @@ CURRICULUM = [
                             _opt("shoes_only", "جزمة بس", "Only shoes", "👟"),
                         ],
                         "clothes",
+                    ),
+                ],
+            },
+        ],
+    },
+    {
+        # --- Social skill: greetings (choice) --------------------------------
+        # Situation -> greeting. Strictly behavioral, culturally neutral enough
+        # for the MVP (morning/hello/goodbye/polite words). No assumptions are
+        # made about a child's social ability — this is just vocabulary practice.
+        "key": "greetings",
+        "category": "social",
+        "name_ar": "التحية",
+        "name_en": "Greetings",
+        "icon": "wave",
+        "levels": [
+            {
+                "name_ar": "بنقول إيه؟",
+                "name_en": "What do we say?",
+                "exercises": [
+                    _choice(
+                        "في الصبح بنقول إيه؟", "In the morning, what do we say?",
+                        [
+                            _opt("g_am", "صباح الخير", "Good morning", "🌅"),
+                            _opt("g_ng", "تصبح على خير", "Good night", "🌙"),
+                            _opt("g_bye", "مع السلامة", "Goodbye", "👋"),
+                        ],
+                        "g_am",
+                    ),
+                    _choice(
+                        "لما نلاقي صاحبنا بنقول إيه؟",
+                        "When we meet a friend, what do we say?",
+                        [
+                            _opt("g_hi", "أهلاً", "Hello", "🙂"),
+                            _opt("g_bye", "مع السلامة", "Goodbye", "👋"),
+                            _opt("g_ng", "تصبح على خير", "Good night", "🌙"),
+                        ],
+                        "g_hi",
+                    ),
+                    _choice(
+                        "لما صاحبنا يروح بنقول إيه؟",
+                        "When our friend leaves, what do we say?",
+                        [
+                            _opt("g_bye", "مع السلامة", "Goodbye", "👋"),
+                            _opt("g_am", "صباح الخير", "Good morning", "🌅"),
+                            _opt("g_thx", "شكراً", "Thank you", "🙏"),
+                        ],
+                        "g_bye",
+                    ),
+                ],
+            },
+            {
+                "name_ar": "كلمات مهذبة",
+                "name_en": "Polite words",
+                "exercises": [
+                    _choice(
+                        "لما حد يساعدنا بنقول إيه؟",
+                        "When someone helps us, what do we say?",
+                        [
+                            _opt("g_thx", "شكراً", "Thank you", "🙏"),
+                            _opt("g_pls", "من فضلك", "Please", "🤲"),
+                            _opt("g_hi", "أهلاً", "Hello", "🙂"),
+                        ],
+                        "g_thx",
+                    ),
+                    _choice(
+                        "لما نطلب حاجة بنقول إيه؟",
+                        "When we ask for something, what do we say?",
+                        [
+                            _opt("g_pls", "من فضلك", "Please", "🤲"),
+                            _opt("g_bye", "مع السلامة", "Goodbye", "👋"),
+                            _opt("g_ng", "تصبح على خير", "Good night", "🌙"),
+                        ],
+                        "g_pls",
+                    ),
+                ],
+            },
+        ],
+    },
+    {
+        # --- Social skill: taking turns / sharing (sequencing) ---------------
+        # Simple 3-step social routines. Sequencing only — no judgment of the
+        # child's social behavior; the child is just ordering what to do.
+        "key": "turn_taking",
+        "category": "social",
+        "name_ar": "نتبادل الدور",
+        "name_en": "Taking turns",
+        "icon": "handshake",
+        "levels": [
+            {
+                "name_ar": "نلعب سوا",
+                "name_en": "Play together",
+                "exercises": [
+                    _sequencing(
+                        "رتب: إزاي نطلب ونتناوب",
+                        "Order: how we ask and take turns",
+                        [
+                            _seq_item("s_ask", "بنسأل: ممكن ألعب بعدك؟",
+                                      "We ask: may I play after you?", "🙋", 1),
+                            _seq_item("s_wait", "نستنى دورنا",
+                                      "We wait our turn", "⏳", 2),
+                            _seq_item("s_thx", "نقول شكراً",
+                                      "We say thank you", "🙏", 3),
+                        ],
+                        ["s_ask", "s_wait", "s_thx"],
+                    ),
+                    _sequencing(
+                        "رتب: إزاي نشارك",
+                        "Order: how we share",
+                        [
+                            _seq_item("s_share", "بنشارك اللعبة",
+                                      "We share the toy", "🧸", 1),
+                            _seq_item("s_play", "نلعب سوا",
+                                      "We play together", "🎲", 2),
+                            _seq_item("s_happy", "نفرح سوا",
+                                      "We enjoy together", "😊", 3),
+                        ],
+                        ["s_share", "s_play", "s_happy"],
+                    ),
+                ],
+            },
+            {
+                "name_ar": "نستنى دورنا",
+                "name_en": "Waiting our turn",
+                "exercises": [
+                    _sequencing(
+                        "رتب: دورنا على الزلّاقة",
+                        "Order: our turn on the slide",
+                        [
+                            _seq_item("s_line", "نقف في الطابور",
+                                      "We stand in line", "🚶", 1),
+                            _seq_item("s_slide", "ننزل من الزلّاقة",
+                                      "We go down the slide", "🛝", 2),
+                            _seq_item("s_next", "نفضل دور اللي بعده",
+                                      "The next friend goes", "🙌", 3),
+                        ],
+                        ["s_line", "s_slide", "s_next"],
+                    ),
+                    _sequencing(
+                        "رتب: إزاي نتكلم مع صاحبنا",
+                        "Order: how we talk with a friend",
+                        [
+                            _seq_item("s_hi", "بنقول أهلاً",
+                                      "We say hello", "👋", 1),
+                            _seq_item("s_listen", "بنسمع صاحبنا",
+                                      "We listen to our friend", "👂", 2),
+                            _seq_item("s_reply", "نرد عليه",
+                                      "We reply", "💬", 3),
+                        ],
+                        ["s_hi", "s_listen", "s_reply"],
+                    ),
+                ],
+            },
+        ],
+    },
+    {
+        # --- Memory skill: matching pairs (matching) -------------------------
+        # Pure visual memory: match identical items (L1) then things used
+        # together (L2). No timing, no pressure — tap and match at your pace.
+        "key": "memory_pairs",
+        "category": "cognitive",
+        "name_ar": "ذاكرة الصور",
+        "name_en": "Picture memory",
+        "icon": "memory",
+        "levels": [
+            {
+                "name_ar": "نفس الشكل",
+                "name_en": "Identical pairs",
+                "exercises": [
+                    _matching(
+                        "وصّل كل حيوان بنفسه",
+                        "Match each animal to its twin",
+                        [
+                            _pair("mp1", _pair_item("L_cat", "قطة", "Cat", "🐱"),
+                                  _pair_item("R_cat", "قطة", "Cat", "🐱")),
+                            _pair("mp2", _pair_item("L_dog", "كلب", "Dog", "🐶"),
+                                  _pair_item("R_dog", "كلب", "Dog", "🐶")),
+                            _pair("mp3", _pair_item("L_bird", "عصفور", "Bird", "🐦"),
+                                  _pair_item("R_bird", "عصفور", "Bird", "🐦")),
+                        ],
+                        {"L_cat": "R_cat", "L_dog": "R_dog", "L_bird": "R_bird"},
+                    ),
+                    _matching(
+                        "وصّل كل حاجة بنفسها",
+                        "Match each thing to its twin",
+                        [
+                            _pair("mp4", _pair_item("L_apple", "تفاحة", "Apple", "🍎"),
+                                  _pair_item("R_apple", "تفاحة", "Apple", "🍎")),
+                            _pair("mp5", _pair_item("L_ball", "كرة", "Ball", "⚽"),
+                                  _pair_item("R_ball", "كرة", "Ball", "⚽")),
+                            _pair("mp6", _pair_item("L_sun", "شمس", "Sun", "☀️"),
+                                  _pair_item("R_sun", "شمس", "Sun", "☀️")),
+                        ],
+                        {"L_apple": "R_apple", "L_ball": "R_ball", "L_sun": "R_sun"},
+                    ),
+                ],
+            },
+            {
+                "name_ar": "حاجات بنستخدمها مع بعض",
+                "name_en": "Things we use together",
+                "exercises": [
+                    _matching(
+                        "وصّل كل حاجة باللي تناسبها",
+                        "Match each thing to what goes with it",
+                        [
+                            _pair("mp7", _pair_item("L_sock", "شراب", "Socks", "🧦"),
+                                  _pair_item("R_shoe", "جزمة", "Shoes", "👟")),
+                            _pair("mp8", _pair_item("L_glove", "جوانتي", "Gloves", "🧤"),
+                                  _pair_item("R_scarf", "شال", "Scarf", "🧣")),
+                            _pair("mp9", _pair_item("L_hat", "قبعة", "Hat", "🧢"),
+                                  _pair_item("R_glasses", "نظارة", "Glasses", "🕶️")),
+                        ],
+                        {"L_sock": "R_shoe", "L_glove": "R_scarf", "L_hat": "R_glasses"},
+                    ),
+                    _matching(
+                        "وصّل كل حاجة باللي تناسبها",
+                        "Match each thing to what goes with it",
+                        [
+                            _pair("mp10", _pair_item("L_spoon", "معلقة", "Spoon", "🥄"),
+                                   _pair_item("R_soup", "شوربة", "Soup", "🍲")),
+                            _pair("mp11", _pair_item("L_cup", "فنجان", "Cup", "☕"),
+                                   _pair_item("R_tea", "شاي", "Tea", "🍵")),
+                            _pair("mp12", _pair_item("L_plate", "طبق", "Plate", "🍽️"),
+                                   _pair_item("R_food", "أكل", "Food", "🍔")),
+                        ],
+                        {"L_spoon": "R_soup", "L_cup": "R_tea", "L_plate": "R_food"},
+                    ),
+                ],
+            },
+        ],
+    },
+    {
+        # --- Memory skill: what's missing / recall (choice) ------------------
+        # A tiny, STATIC recall: the prompt names a small set (read aloud),
+        # and the child picks which item belongs to that set. No timing, no
+        # hidden-then-reveal mechanics — keep it gentle and predictable.
+        "key": "recall",
+        "category": "cognitive",
+        "name_ar": "نتفكر مع بعض",
+        "name_en": "Let's remember",
+        "icon": "magnifier",
+        "levels": [
+            {
+                "name_ar": "نتفكر اللي شفناه",
+                "name_en": "Remember what we saw",
+                "exercises": [
+                    _choice(
+                        "في المطبخ شفنا 🥄 و 🍽️ — إيه كمان في المطبخ؟",
+                        "In the kitchen we saw a spoon and a plate — what else is in the kitchen?",
+                        [
+                            _opt("r_pan", "مقلاة", "Frying pan", "🍳"),
+                            _opt("r_bird", "عصفور", "Bird", "🐦"),
+                            _opt("r_boat", "مركب", "Boat", "⛵"),
+                        ],
+                        "r_pan",
+                    ),
+                    _choice(
+                        "في الحديقة شفنا 🌸 و 🦋 — إيه كمان في الحديقة؟",
+                        "In the garden we saw a flower and a butterfly — what else is in the garden?",
+                        [
+                            _opt("r_tree", "شجرة", "Tree", "🌳"),
+                            _opt("r_cup", "فنجان", "Cup", "☕"),
+                            _opt("r_shoe", "جزمة", "Shoe", "👟"),
+                        ],
+                        "r_tree",
+                    ),
+                    _choice(
+                        "شفنا 🐱 و 🐶 — إيه كمان حيوان؟",
+                        "We saw a cat and a dog — which of these is an animal too?",
+                        [
+                            _opt("r_rabbit", "أرنب", "Rabbit", "🐰"),
+                            _opt("r_car", "عربية", "Car", "🚗"),
+                            _opt("r_chair", "كرسي", "Chair", "🪑"),
+                        ],
+                        "r_rabbit",
+                    ),
+                ],
+            },
+            {
+                "name_ar": "نكمّل المجموعة",
+                "name_en": "Complete the group",
+                "exercises": [
+                    _choice(
+                        "فواكه 🍎 و 🍌 — مين فاكهة برضه؟",
+                        "Apples and bananas are fruit — which of these is fruit too?",
+                        [
+                            _opt("r_grapes", "عنب", "Grapes", "🍇"),
+                            _opt("r_carrot", "جزر", "Carrot", "🥕"),
+                            _opt("r_sock", "شراب", "Sock", "🧦"),
+                        ],
+                        "r_grapes",
+                    ),
+                    _choice(
+                        "هدوم 👕 و 👖 — مين هدوم برضه؟",
+                        "A shirt and pants are clothes — which of these is clothing too?",
+                        [
+                            _opt("r_hat", "قبعة", "Hat", "🧢"),
+                            _opt("r_popcorn", "فشار", "Popcorn", "🍿"),
+                            _opt("r_bone", "عضم", "Bone", "🦴"),
+                        ],
+                        "r_hat",
+                    ),
+                    _choice(
+                        "حاجات بنشربها 🥛 و 💧 — إيه كمان بنشربه؟",
+                        "Milk and water are drinks — which of these do we drink too?",
+                        [
+                            _opt("r_juice", "عصير", "Juice", "🧃"),
+                            _opt("r_bone", "عضم", "Bone", "🦴"),
+                            _opt("r_teddy", "دبدوب", "Teddy", "🧸"),
+                        ],
+                        "r_juice",
+                    ),
+                ],
+            },
+        ],
+    },
+    {
+        # --- Word / naming practice: picture naming (choice) -----------------
+        # See a picture (emoji in the prompt), pick the matching WRITTEN word.
+        # This is simple WORD-RECOGNITION content ONLY — it is NOT speech
+        # therapy and NOT pronunciation training. Real speech/pronunciation
+        # practice must be designed with a speech therapist. The choice type
+        # already offers the optional mic (reusing the existing speech-answer
+        # flow unchanged); that is incidental, not a claim of speech training.
+        "key": "picture_naming",
+        "category": "cognitive",
+        "name_ar": "نسمّي الصور",
+        "name_en": "Picture naming",
+        "icon": "picture",
+        "levels": [
+            {
+                "name_ar": "إيه ده؟",
+                "name_en": "What is this?",
+                "exercises": [
+                    _choice(
+                        "إيه ده؟ 🐱", "What is this? 🐱",
+                        [
+                            _opt("n_cat", "قطة", "Cat", "قطة"),
+                            _opt("n_dog", "كلب", "Dog", "كلب"),
+                            _opt("n_book", "كتاب", "Book", "كتاب"),
+                        ],
+                        "n_cat",
+                    ),
+                    _choice(
+                        "إيه ده؟ ☀️", "What is this? ☀️",
+                        [
+                            _opt("n_sun", "شمس", "Sun", "شمس"),
+                            _opt("n_moon", "قمر", "Moon", "قمر"),
+                            _opt("n_door", "باب", "Door", "باب"),
+                        ],
+                        "n_sun",
+                    ),
+                    _choice(
+                        "إيه ده؟ 🍎", "What is this? 🍎",
+                        [
+                            _opt("n_apple", "تفاحة", "Apple", "تفاحة"),
+                            _opt("n_orange", "برتقالة", "Orange", "برتقالة"),
+                            _opt("n_ball", "كرة", "Ball", "كرة"),
+                        ],
+                        "n_apple",
+                    ),
+                ],
+            },
+            {
+                "name_ar": "إيه ده؟ كمان",
+                "name_en": "What is this? More",
+                "exercises": [
+                    _choice(
+                        "إيه ده؟ ⚽", "What is this? ⚽",
+                        [
+                            _opt("n_ball", "كرة", "Ball", "كرة"),
+                            _opt("n_apple", "تفاحة", "Apple", "تفاحة"),
+                            _opt("n_cat", "قطة", "Cat", "قطة"),
+                        ],
+                        "n_ball",
+                    ),
+                    _choice(
+                        "إيه ده؟ 🏠", "What is this? 🏠",
+                        [
+                            _opt("n_house", "بيت", "House", "بيت"),
+                            _opt("n_tree", "شجرة", "Tree", "شجرة"),
+                            _opt("n_car", "عربية", "Car", "عربية"),
+                        ],
+                        "n_house",
+                    ),
+                    _choice(
+                        "إيه ده؟ 🥛", "What is this? 🥛",
+                        [
+                            _opt("n_milk", "لبن", "Milk", "لبن"),
+                            _opt("n_water", "ميّة", "Water", "ميّة"),
+                            _opt("n_bread", "عيش", "Bread", "عيش"),
+                        ],
+                        "n_milk",
                     ),
                 ],
             },
