@@ -1,0 +1,80 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --paper: #fbf7ef;
+  --ink: #2c2a26;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: "Baloo Bhaijaan 2", "Baloo 2", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Big, calm entrance for the child's answer cards. */
+@keyframes pop-in {
+  from {
+    transform: scale(0.9);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes cheer {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.15) rotate(-3deg);
+  }
+  70% {
+    transform: scale(1.05) rotate(2deg);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes wiggle {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-6px);
+  }
+  75% {
+    transform: translateX(6px);
+  }
+}
+
+.animate-pop {
+  animation: pop-in 0.35s ease-out both;
+}
+.animate-cheer {
+  animation: cheer 0.6s ease-in-out;
+}
+.animate-wiggle {
+  animation: wiggle 0.4s ease-in-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-pop,
+  .animate-cheer,
+  .animate-wiggle {
+    animation: none;
+  }
+}

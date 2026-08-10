@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.db
+*.joblib
+
+# Node
+node_modules/
+dist/
+.vite/
+*.tsbuildinfo
+
+# Env
+.env
+
+# Windows file-transfer markers
+*:Zone.Identifier
+
+# Whisper / faster-whisper model-weight caches
+# (downloaded to ~/.cache/huggingface — normally outside the repo)
+.cache/
+hf_cache/
+models/
