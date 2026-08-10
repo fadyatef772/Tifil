@@ -7,6 +7,8 @@ import type {
   Journey,
   Lang,
   NextExercise,
+  ParentSuggestion,
+  ParentSummary,
   Rewards,
   SessionStart,
   SessionSummary,
@@ -120,4 +122,11 @@ export const api = {
   // --- Learning Journey (child view) ---------------------------------------
   journey: (childId: number) =>
     fetch(`${BASE}/children/${childId}/journey`).then(json<Journey>),
+
+  // --- Parent View (adult, read-only aggregation) ----------------------------
+  parentSummary: (childId: number) =>
+    fetch(`${BASE}/children/${childId}/parent-summary`).then(json<ParentSummary>),
+
+  suggestions: (childId: number) =>
+    fetch(`${BASE}/children/${childId}/suggestions`).then(json<ParentSuggestion[]>),
 };

@@ -1,14 +1,17 @@
 import { useEffect, useState } from "react";
 import Dashboard from "./adult/Dashboard";
+import ParentView from "./adult/ParentView";
 import ChildHome from "./child/ChildHome";
 import { t } from "./i18n";
 import type { Lang } from "./types";
 
 type Mode = "child" | "adult";
+type AdultView = "progress" | "parent";
 
 export default function App() {
   const [lang, setLang] = useState<Lang>("ar");
   const [mode, setMode] = useState<Mode>("child");
+  const [adultView, setAdultView] = useState<AdultView>("progress");
   const s = t[lang];
 
   // Keep document direction in sync so both RTL and LTR lay out correctly.
@@ -62,7 +65,41 @@ export default function App() {
       </header>
 
       <main className="flex-1">
-        {mode === "child" ? <ChildHome lang={lang} /> : <Dashboard lang={lang} />}
+        {mode === "adult" && (
+          <div className="flex justify-center pt-4">
+            <div className="flex rounded-full bg-white shadow-sm p-1">
+              <button
+                onClick={() => setAdultView("progress")}
+                className={[
+                  "px-4 py-1.5 rounded-full text-sm font-semibold",
+                  adultView === "progress"
+                    ? "bg-stone-800 text-white"
+                    : "text-stone-500 hover:bg-stone-100",
+                ].join(" ")}
+              >
+                {s.progressTab}
+              </button>
+              <button
+                onClick={() => setAdultView("parent")}
+                className={[
+                  "px-4 py-1.5 rounded-full text-sm font-semibold",
+                  adultView === "parent"
+                    ? "bg-stone-800 text-white"
+                    : "text-stone-500 hover:bg-stone-100",
+                ].join(" ")}
+              >
+                {s.parentView}
+              </button>
+            </div>
+          </div>
+        )}
+        {mode === "child" ? (
+          <ChildHome lang={lang} />
+        ) : adultView === "parent" ? (
+          <ParentView lang={lang} />
+        ) : (
+          <Dashboard lang={lang} />
+        )}
       </main>
     </div>
   );

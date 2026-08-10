@@ -79,6 +79,26 @@ class Settings(BaseSettings):
     # Traces are downsampled to at most this many points before scoring.
     tracing_max_points: int = 400
 
+    # --- Parent view (adult, read-only aggregation) --------------------------
+    # Tunables for the gentle, rule-based EDUCATIONAL TIPS in
+    # app/services/parent_view.py. These are optional home-activity ideas, not
+    # medical or therapeutic advice — the module never diagnoses anything.
+    # "This week" window (in days) used by the summary rollups and tips.
+    parent_view_week_days: int = 7
+    # "gentle_practice" tip: a skill with at least this many attempts in the
+    # window and at most this accuracy (0..1) earns a "you could try more
+    # [skill] activities" suggestion — never a problem label.
+    gentle_practice_min_attempts: int = 3
+    gentle_practice_max_accuracy: float = 0.5
+    # "revisit" tip: a skill last practiced more than this many days ago gets
+    # a gentle "maybe revisit it" idea.
+    revisit_min_days: int = 5
+    # "consistency" tip: a current streak at least this long earns a
+    # "keep the daily routine going" compliment.
+    consistency_min_streak: int = 5
+    # Never return more suggestions than this.
+    max_suggestions: int = 4
+
     class Config:
         env_prefix = "TIFL_"
 

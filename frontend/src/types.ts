@@ -184,3 +184,36 @@ export interface Journey {
   total_stars: number;
   stops: JourneyStop[];
 }
+
+// --- Parent View (adult, read-only aggregation) ------------------------------
+export interface ParentSkillRef {
+  skill_id: number;
+  skill_key: string;
+  name_ar: string;
+  name_en: string;
+}
+
+export interface ParentPeriodSummary {
+  activities_done: number;
+  accuracy: number;
+  sessions_count: number;
+  stars_earned: number;
+  skills_practiced: ParentSkillRef[];
+  level_ups: number;
+}
+
+export interface ParentSummary {
+  child: Child;
+  today: ParentPeriodSummary;
+  week: ParentPeriodSummary;
+  current_streak: number;
+  total_stars: number;
+}
+
+export interface ParentSuggestion {
+  type: string;
+  skill: ParentSkillRef | null;
+  text_ar: string;
+  text_en: string;
+  tone: string;
+}

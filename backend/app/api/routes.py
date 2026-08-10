@@ -30,6 +30,7 @@ from app.ml.intervention import easier_exercise
 from app.services import adaptive_engine as engine
 from app.services import exercise_types
 from app.services import goals as goals_service
+from app.services import parent_view
 from app.services import rewards as rewards_service
 from app.speech import match as speech_match
 from app.speech import transcriber
@@ -633,3 +634,33 @@ def child_progress(child_id: int, db: Session = Depends(get_db)):
         if total_attempts
         else 0.0,
     )
+
+
+# --- Parent view (adult, read-only aggregation) ----------------------------
+@router.get(
+    "/children/{child_id}/parent-summary",
+    response_model=schemas.ParentSummaryOut,
+)
+def child_parent_summary(child_id: int, db: Session = Depends(get_db)):
+    """Today + this-week rollup for the parent dashboard. A PURE READ-ONLY
+    projection over existing Attempt / Session / LevelUpEvent / Rewards rows —
+    it never writes, never consults the engine, rewards, ML or speech layers,
+    and adds no new source of truth (see app/services/parent_view.py)."""
+    child = db.get(Child, child_id)
+    if not child:
+        raise HTTPException(404, "Child not found")
+    return schemas.ParentSummaryOut(**parent_view.summary(db, child))
+
+
+@router.get(
+    "/children/{child_id}/suggestions",
+    response_model=list[schemas.ParentSuggestionOut],
+)
+def child_suggestions(child_id: int, db: Session = Depends(get_db)):
+    """Gentle, rule-based EDUCATIONAL TIPS for home activities. Read-only,
+    optional ideas only — never a diagnosis, never medical or therapeutic
+    advice (rules and wording live in app/services/parent_view.py)."""
+    child = db.get(Child, child_id)
+    if not child:
+        raise HTTPException(404, "Child not found")
+    return [schemas.ParentSuggestionOut(**s) for s in parent_view.suggestions(db, child)]
