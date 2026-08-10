@@ -63,6 +63,9 @@ backend/
     services/    adaptive_engine.py   ← the pedagogical core (goal-weighting
                  goals.py                added, see below — level logic itself
                  rewards.py              is unchanged; rewards ride alongside)
+                 parent_view.py      ← read-only parent rollups + gentle,
+                                       rule-based home-activity suggestions
+                                       (never a diagnosis — see "Parent View")
                  exercise_types/     ← pluggable exercise-type system, see below
     ml/          struggle_predictor.py  ← ML layer, see below
                  synthetic_data.py, features.py, intervention.py
@@ -77,13 +80,16 @@ backend/
   verify_rewards.py   end-to-end check of stars + streak + avatar unlocks
   verify_exercise_types.py  end-to-end check of the pluggable exercise types
   verify_journey.py   end-to-end check of the child's learning-journey path
+  verify_parent_view.py end-to-end check of the parent view (read-only
+                     rollups + gentle suggestions, see below)
   verify_answers.py   shared "what a correct/wrong answer looks like" helper
 frontend/
   src/
     child/       ChildHome → LearningJourney → ExercisePlayer (tap or
                  optional mic, session stars)  exercises/  registry.tsx +
                  Choice/Matching/Sequencing/Tracing
-    adult/       Dashboard (progress, goals, recent sessions)
+    adult/       Dashboard (progress, goals, recent sessions) ·
+                 ParentView (plain-language summaries + home ideas)
     api.ts · i18n.ts (strings + speech) · types.ts · App.tsx
 ```
 
@@ -151,6 +157,16 @@ to the first non-mastered stop; and journey reads never write anything):
 
 ```bash
 python verify_journey.py
+```
+
+Verify the parent view end to end (builds a known history for one child —
+a today batch, a 3-days-ago batch, an 8-days-ago batch — then asserts the
+today vs this-week rollup numbers match it exactly, that the gentle
+suggestions follow the documented rules, and that reading the parent view
+never writes anything):
+
+```bash
+python verify_parent_view.py
 ```
 
 The verify scripts use a throwaway SQLite file each, so they never touch a
@@ -453,6 +469,82 @@ journey on a child card tap, and tapping the current stop enters
 `ExercisePlayer`. The stop emojis come from a small `icon`-key → emoji map in
 the component that mirrors the seed's icon keys exactly (presentation only —
 the data always comes from the API).
+
+---
+
+## Parent View — today, this week, and gentle home ideas
+
+An adult-facing dashboard that turns the child's existing progress into
+plain-language summaries and a few optional home-activity ideas.
+
+**The one governing rule: this view never diagnoses.** It is written for
+parents and presents observations and educational tips ONLY. It never:
+
+- diagnoses, or implies a medical/clinical condition,
+- gives therapeutic or medical advice,
+- states anything as clinical fact.
+
+Every suggestion is a gentle, general, optional idea ("you could try…",
+"maybe…"), always phrased as something the *parent* can do — never "your
+child has a problem with X". When in doubt, the wording is softened. The
+suggestions are **rule-based educational tips** (the exact rules and their
+rationale are documented in `app/services/parent_view.py`), not advice.
+
+**Read-only projections, no new source of truth.** Both endpoints derive
+everything fresh from the rows the engine / rewards / sessions layers
+already own (`Attempt`, `Session`, `LevelUpEvent`, `Skill`, `Rewards`,
+`Mastery`). They never write, and they add no new tables or columns —
+`Base.metadata.create_all()` on an existing `tifl.db` is a no-op (verified
+against the real database: it boots and both endpoints answer 200).
+
+```
+GET /api/children/{id}/parent-summary
+    -> { child, current_streak, total_stars,
+         today: { activities_done, accuracy, sessions_count, stars_earned,
+                  skills_practiced: [{skill_id, skill_key, name_ar, name_en}],
+                  level_ups },
+         week:  { same rollup as today } }
+
+GET /api/children/{id}/suggestions
+    -> [ { type, skill: {...}|null, text_ar, text_en, tone: "encouraging" }, ... ]
+```
+
+`today` is the current UTC calendar day; `week` is the rolling last
+`parent_view_week_days` days (default 7) and therefore includes today.
+`stars_earned` is the correct-answer count in the window — the rewards layer
+awards exactly one star per exercise solved correctly, so correct attempts
+are a faithful projection of stars earned in that window. `accuracy` is
+correct / total attempts in the window.
+
+**Suggestion rules** (evaluated in order; always 2–`max_suggestions` items;
+every threshold is a config tunable in `app/core/config.py`):
+
+| type | trigger | example wording |
+|---|---|---|
+| `gentle_practice` | a skill with ≥ `gentle_practice_min_attempts` recent attempts and accuracy ≤ `gentle_practice_max_accuracy` | "You could try a few more [skill] activities together this week — every try counts." |
+| `revisit` | a skill with prior practice whose last attempt is more than `revisit_min_days` days ago | "It's been a few days since [skill] — maybe revisit it when you have time." |
+| `consistency` | current streak ≥ `consistency_min_streak` | "Great consistency this week — keep the daily routine going." |
+| `new_level` | a level-up event within the week window | "Nice progress! [skill] reached a new level." |
+| `encouragement` | filler when fewer than two of the above apply | "Keep playing a little every day — small steps add up." |
+
+None of these contains clinical or diagnostic language, and every one is
+returned with `tone: "encouraging"`.
+
+**In the frontend:** adult mode now has a small tab switch — **Progress**
+(the existing `Dashboard`, unchanged) and **Parent view** (`ParentView`,
+new). Parent view has its own child chooser (same pattern as the Dashboard)
+and four sections:
+
+1. a today/this-week **snapshot** of simple stat cards (activities,
+   accuracy, stars earned, sessions, level-ups, skills practiced);
+2. **skill progress** with a friendly, non-clinical status ("doing well" /
+   "still practicing" / "getting started");
+3. the gentle **home-idea suggestions**, shown as optional ideas with an
+   encouraging tone and a "not a diagnosis, not medical advice" note;
+4. the last few **session summaries**.
+
+Fully bilingual ar/en with RTL/LTR, reusing the existing styling and API
+helpers — no new libraries.
 
 ---
 

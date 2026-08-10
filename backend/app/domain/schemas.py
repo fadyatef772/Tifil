@@ -279,3 +279,60 @@ class JourneyOut(BaseModel):
     child_id: int
     total_stars: int
     stops: list[JourneyStopOut]
+
+
+# --- Parent view (adult, read-only aggregation) ------------------------------
+class ParentSkillRef(BaseModel):
+    """A lightweight, bilingual skill reference used by the parent view."""
+
+    skill_id: int
+    skill_key: str
+    name_ar: str
+    name_en: str
+
+
+class ParentPeriodSummary(BaseModel):
+    """Read-only rollup over existing Attempt / Session / LevelUpEvent rows
+    for one window ("today" or "this week"). Nothing here is stored and
+    nothing is a source of truth — it is derived fresh on every read.
+
+    `stars_earned` is the number of correct answers in the window: the
+    rewards layer awards exactly one star per exercise solved correctly, so
+    correct attempts are a faithful projection of stars earned. `accuracy` is
+    correct / total attempts in the window. `skills_practiced` are the
+    distinct skills touched in the window.
+    """
+
+    activities_done: int
+    accuracy: float  # 0..1 over attempts in the window
+    sessions_count: int
+    stars_earned: int
+    skills_practiced: list[ParentSkillRef]
+    level_ups: int
+
+
+class ParentSummaryOut(BaseModel):
+    """GET /api/children/{id}/parent-summary — a pure read-only aggregation
+    for the parent dashboard. `today` is the current UTC calendar day;
+    `week` is the rolling last N days (config `parent_view_week_days`, default
+    7) and therefore includes `today`."""
+
+    child: ChildOut
+    today: ParentPeriodSummary
+    week: ParentPeriodSummary
+    current_streak: int
+    total_stars: int
+
+
+class ParentSuggestionOut(BaseModel):
+    """GET /api/children/{id}/suggestions — gentle, rule-based EDUCATIONAL
+    TIPS for home activities. Never a diagnosis, never medical or therapeutic
+    advice: each tip is an optional idea ("you could try...", "maybe...") and
+    `tone` is always "encouraging". The rules are documented in
+    app/services/parent_view.py."""
+
+    type: str  # "gentle_practice" | "revisit" | "consistency" | "new_level" | "encouragement"
+    skill: ParentSkillRef | None
+    text_ar: str
+    text_en: str
+    tone: str = "encouraging"
