@@ -185,6 +185,26 @@ export interface Journey {
   stops: JourneyStop[];
 }
 
+// --- Daily Routine (child, read-only projection) ------------------------------
+export interface DailyDay {
+  date: string; // UTC calendar day "YYYY-MM-DD"
+  active: boolean; // any attempt that day (derived from Attempt timestamps)
+}
+
+export interface TodayPlan {
+  target: number; // reuses the session target from backend config
+  done: number; // attempts logged today
+}
+
+export interface DailyRoutine {
+  child_id: number;
+  daily_streak: number; // consecutive active calendar days (daily, NOT the
+  // in-session rewards streak, which is untouched)
+  active_today: boolean;
+  today_plan: TodayPlan;
+  recent_days: DailyDay[]; // last 14 days, oldest first
+}
+
 // --- Parent View (adult, read-only aggregation) ------------------------------
 export interface ParentSkillRef {
   skill_id: number;
