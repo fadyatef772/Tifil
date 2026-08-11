@@ -2,6 +2,7 @@ import type {
   AnswerResult,
   Child,
   ChildProgress,
+  DailyRoutine,
   Goal,
   GoalStatus,
   Journey,
@@ -122,6 +123,10 @@ export const api = {
   // --- Learning Journey (child view) ---------------------------------------
   journey: (childId: number) =>
     fetch(`${BASE}/children/${childId}/journey`).then(json<Journey>),
+
+  // --- Daily Routine (child, read-only projection) ---------------------------
+  daily: (childId: number) =>
+    fetch(`${BASE}/children/${childId}/daily`).then(json<DailyRoutine>),
 
   // --- Parent View (adult, read-only aggregation) ----------------------------
   parentSummary: (childId: number) =>

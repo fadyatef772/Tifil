@@ -63,6 +63,11 @@ backend/
     services/    adaptive_engine.py   ← the pedagogical core (goal-weighting
                  goals.py                added, see below — level logic itself
                  rewards.py              is unchanged; rewards ride alongside)
+                 daily_routine.py     ← read-only daily streak / today's plan
+                                        / activity calendar (derived from
+                                        Attempt timestamps — see "Daily
+                                        Routine"; the rewards streak is
+                                        untouched)
                  parent_view.py      ← read-only parent rollups + gentle,
                                        rule-based home-activity suggestions
                                        (never a diagnosis — see "Parent View")
@@ -167,6 +172,16 @@ never writes anything):
 
 ```bash
 python verify_parent_view.py
+```
+
+Verify the daily routine end to end (mocks attempt timestamps across
+several days through the real answer flow, then asserts the daily streak
+increments on consecutive days, stays "alive" while the run ends yesterday,
+never inflates on same-day repeats, resets gently after a missed day, the
+today's-plan progress is exact, and the daily reads never write):
+
+```bash
+python verify_daily_routine.py
 ```
 
 The verify scripts use a throwaway SQLite file each, so they never touch a
@@ -518,6 +533,66 @@ journey on a child card tap, and tapping the current stop enters
 `ExercisePlayer`. The stop emojis come from a small `icon`-key → emoji map in
 the component that mirrors the seed's icon keys exactly (presentation only —
 the data always comes from the API).
+
+---
+
+## Daily Routine — a gentle reason to come back each day
+
+A small, cheerful daily-routine panel on the child's journey: a **daily
+streak** (🔥 *N days*), a **today's plan** (filled stars toward a small fixed
+target), and a simple **14-day activity calendar** (active days in colour,
+inactive days merely pale). Fully bilingual ar/en.
+
+**It builds healthy routine, NOT compulsion — the one governing principle.**
+For a child with Down syndrome a missed day must never feel like a loss:
+
+- A missed day resets the streak to 0 **gently**: the UI only ever frames a
+  fresh start positively ("Let's start today!" / "يلا نبدأ النهارده!").
+  There is no "you lost your streak", no "play or lose it" warning, no
+  countdown, no guilt — anywhere in the backend or the frontend.
+- The today's-plan target is small and fixed, and "done" counts *attempts*
+  (the exact metric a session summary already uses for `target_reached`), so
+  a child who is still learning still fills their stars — the plan can never
+  become a source of anxiety.
+
+**Derived, not stored — no new source of truth.** A child is *active* on a
+UTC calendar day if they have at least one `Attempt` that day (from
+`Attempt.created_at`; a session with zero attempts is not practice).
+`app/services/daily_routine.py` is a pure read-only projection, exactly like
+the journey and parent view: it never writes, never calls the engine, and
+adds **no new table and no new column** — so `create_all` on an existing
+`tifl.db` is a no-op and existing children's data is preserved untouched
+(verified against the real database). The daily streak is **derived on every
+read**, not stored.
+
+**The daily streak is completely separate from the in-session rewards
+streak.** The rewards layer's `streak` (consecutive correct *answers*,
+`app/services/rewards.py`) is not read, written, or modified here — it stays
+byte-for-byte as it was. Same-day repeat visits never inflate the daily
+streak (a day is active or it isn't); they only advance today's plan.
+
+```
+GET /api/children/{id}/daily
+    -> { child_id,
+         daily_streak,            # consecutive active UTC days ending today
+                                  # (or yesterday — the streak stays "alive"
+                                  # until the day is over; a gap resets to 0)
+         active_today,            # any attempt today
+         today_plan: { target, done },   # target = settings.session_exercise_target
+         recent_days: [ { date, active }, ... ] }  # last 14 days, oldest first
+```
+
+The streak logic in one line: count the consecutive active days ending today
+(or, if today isn't played yet, ending yesterday — the day isn't over, so the
+streak is simply still alive). A gap older than that yields 0.
+
+**In the frontend:** `LearningJourney` fetches the daily routine alongside
+the journey and renders `DailyRoutine` above the path — the 🔥 streak (or 🌱
+with "Let's start today!" when it's a fresh start), today's plan as ⭐/☆
+stars plus a small *done/target*, and the 14-day dot calendar. Reusing the
+app's existing styles and animations, RTL/LTR aware, no new libraries. The
+streak refreshes whenever the child returns to the journey, so playing today
+is reflected immediately.
 
 ---
 

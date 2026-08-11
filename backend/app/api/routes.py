@@ -28,6 +28,7 @@ from app.domain.models import Session as SessionModel
 from app.ml import struggle_predictor
 from app.ml.intervention import easier_exercise
 from app.services import adaptive_engine as engine
+from app.services import daily_routine
 from app.services import exercise_types
 from app.services import goals as goals_service
 from app.services import parent_view
@@ -637,6 +638,25 @@ def child_progress(child_id: int, db: Session = Depends(get_db)):
 
 
 # --- Parent view (adult, read-only aggregation) ----------------------------
+@router.get(
+    "/children/{child_id}/daily",
+    response_model=schemas.DailyRoutineOut,
+)
+def child_daily_routine(child_id: int, db: Session = Depends(get_db)):
+    """The child's daily routine — daily streak, today's plan, and a recent
+    activity calendar. A PURE READ-ONLY projection over the child's existing
+    Attempt rows (see app/services/daily_routine.py): it never writes,
+    never calls the engine, and never touches the rewards in-session streak.
+
+    The streak is gentle by construction: a missed day resets it to 0, and
+    the UI only ever frames a fresh start positively — there is no "play or
+    lose your streak" mechanic anywhere."""
+    child = db.get(Child, child_id)
+    if not child:
+        raise HTTPException(404, "Child not found")
+    return schemas.DailyRoutineOut(**daily_routine.daily(db, child))
+
+
 @router.get(
     "/children/{child_id}/parent-summary",
     response_model=schemas.ParentSummaryOut,

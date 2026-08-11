@@ -83,6 +83,15 @@ export const t = {
     suggestionsNote: "دي أفكار تعليمية عامة، مش تشخيص ومش نصيحة طبية.",
     noSuggestions: "لسّه مفيش أفكار — كمّلوا اللعب!",
     skillStatus: "حالة المهارة",
+    // --- Daily Routine (child) ---
+    dailyStreakLabel: "أيام متتالية",
+    dayWord: "يوم",
+    daysWord: "أيام",
+    todayPlan: "خطة النهارده",
+    greatJobToday: "برافو النهارده!",
+    letsStartToday: "يلا نبدأ النهارده!",
+    myDays: "أيامي",
+    lastDaysActive: "من 14 يوم، لعبت فيها",
   },
   en: {
     appName: "Tifl",
@@ -165,6 +174,15 @@ export const t = {
     suggestionsNote: "These are general learning ideas, not a diagnosis and not medical advice.",
     noSuggestions: "No ideas yet — keep playing!",
     skillStatus: "Skill status",
+    // --- Daily Routine (child) ---
+    dailyStreakLabel: "days in a row",
+    dayWord: "day",
+    daysWord: "days",
+    todayPlan: "Today's plan",
+    greatJobToday: "Great job today!",
+    letsStartToday: "Let's start today!",
+    myDays: "My days",
+    lastDaysActive: "of the last 14 days you played",
   },
 } as const;
 

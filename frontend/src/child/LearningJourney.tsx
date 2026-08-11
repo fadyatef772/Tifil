@@ -1,7 +1,14 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import { t } from "../i18n";
-import type { Child, Journey, JourneyStop, Lang } from "../types";
+import type {
+  Child,
+  DailyRoutine as DailyRoutineData,
+  Journey,
+  JourneyStop,
+  Lang,
+} from "../types";
+import DailyRoutine from "./DailyRoutine";
 
 // The skills' `icon` field is a stable string key from the seed curriculum;
 // this map turns it into the child-friendly emoji shown on the path
@@ -57,13 +64,19 @@ function Pips({ stop }: { stop: JourneyStop }) {
 export default function LearningJourney({ child, lang, onExit, onPlay }: Props) {
   const s = t[lang];
   const [journey, setJourney] = useState<Journey | null>(null);
+  const [daily, setDaily] = useState<DailyRoutineData | null>(null);
 
   // Re-fetch on every mount — when the child returns from playing, the
-  // journey reflects any new mastery from the answers they just gave.
+  // journey reflects any new mastery from the answers they just gave, and
+  // the daily routine reflects that today's plan advanced and the streak
+  // (if today was played) now includes today.
   useEffect(() => {
     let cancelled = false;
     api.journey(child.id).then((j) => {
       if (!cancelled) setJourney(j);
+    });
+    api.daily(child.id).then((d) => {
+      if (!cancelled) setDaily(d);
     });
     return () => {
       cancelled = true;
@@ -102,6 +115,10 @@ export default function LearningJourney({ child, lang, onExit, onPlay }: Props) 
       </div>
 
       <h1 className="text-center text-3xl font-bold mt-2 mb-6">{s.journey}</h1>
+
+      {/* Daily routine: streak, today's plan, and a recent-day calendar.
+          Best-effort — if the fetch failed the path still shows. */}
+      {daily && <div className="mb-8"><DailyRoutine data={daily} lang={lang} /></div>}
 
       {/* One clear, linear path: mastered … current … locked. */}
       <div className="flex-1 flex justify-center px-6 pb-10">

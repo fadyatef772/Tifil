@@ -281,6 +281,40 @@ class JourneyOut(BaseModel):
     stops: list[JourneyStopOut]
 
 
+# --- Daily Routine (child, read-only projection) -----------------------------
+class DailyDayOut(BaseModel):
+    """One calendar day in the child's recent activity calendar. `date` is a
+    UTC calendar day ("YYYY-MM-DD"); `active` is whether the child had any
+    attempt that day (derived from Attempt.created_at — see
+    app/services/daily_routine.py)."""
+
+    date: str
+    active: bool
+
+
+class TodayPlanOut(BaseModel):
+    """The day's small, fixed plan. `target` reuses the sessions layer's own
+    target (settings.session_exercise_target); `done` is how many attempts
+    were logged today (the same metric a session summary counts)."""
+
+    target: int
+    done: int
+
+
+class DailyRoutineOut(BaseModel):
+    """GET /api/children/{id}/daily — a PURE READ-ONLY projection over the
+    child's existing Attempt rows. No new source of truth: the daily streak,
+    today's plan and the activity calendar are all derived fresh on every
+    read, and the daily streak is entirely separate from the in-session
+    answer streak in the rewards layer (which is untouched by this feature)."""
+
+    child_id: int
+    daily_streak: int
+    active_today: bool
+    today_plan: TodayPlanOut
+    recent_days: list[DailyDayOut]  # last 14 UTC calendar days, oldest first
+
+
 # --- Parent view (adult, read-only aggregation) ------------------------------
 class ParentSkillRef(BaseModel):
     """A lightweight, bilingual skill reference used by the parent view."""
