@@ -31,6 +31,7 @@ import os
 from datetime import datetime, timedelta, timezone
 
 os.environ["TIFL_DATABASE_URL"] = "sqlite:///./verify_daily_routine.db"
+os.environ["TIFL_SECRET_KEY"] = "test-only-dev-secret-not-for-production"
 
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import func, select  # noqa: E402
@@ -47,14 +48,21 @@ Base.metadata.drop_all(engine)
 seed(reset=True)
 client = TestClient(app)
 
+# Create a test parent for auth.
+_parent = client.post(
+    "/api/auth/signup",
+    json={"email": "verify@example.com", "password": "testpass123", "name": "Verify"},
+).json()
+AUTH = {"Authorization": f"Bearer {_parent['access_token']}"}
+
 
 def daily(cid: int) -> dict:
-    return client.get(f"/api/children/{cid}/daily").json()
+    return client.get(f"/api/children/{cid}/daily", headers=AUTH).json()
 
 
 def answer_correctly(cid: int, session_id: int | None = None) -> None:
     """Fetch the next exercise and answer it correctly through the API."""
-    nxt = client.get(f"/api/children/{cid}/next-exercise").json()
+    nxt = client.get(f"/api/children/{cid}/next-exercise", headers=AUTH).json()
     ex = nxt["exercise"]
     assert ex is not None, "engine ran out of exercises mid-verify"
     db = SessionLocal()
@@ -63,7 +71,7 @@ def answer_correctly(cid: int, session_id: int | None = None) -> None:
     payload = {"child_id": cid, "exercise_id": ex["id"], **body, "tries": 1}
     if session_id is not None:
         payload["session_id"] = session_id
-    res = client.post("/api/answers", json=payload).json()
+    res = client.post("/api/answers", json=payload, headers=AUTH).json()
     assert res["is_correct"] is True, "expected a correct answer"
 
 
@@ -95,7 +103,7 @@ def main() -> None:
     print(f"session_exercise_target = {target} (today's plan target)")
 
     child = client.post(
-        "/api/children", json={"name": "Daily Routine Test Child", "preferred_language": "ar"}
+        "/api/children", json={"name": "Daily Routine Test Child", "preferred_language": "ar"}, headers=AUTH
     ).json()
     cid = child["id"]
 
@@ -112,7 +120,7 @@ def main() -> None:
 
     # --- 2. Build a 4-day run ending today, oldest day first. -------------
     # Day -3: still more than a day ago -> the streak stays 0 (gap).
-    s_3 = client.post(f"/api/children/{cid}/sessions/start").json()["session_id"]
+    s_3 = client.post(f"/api/children/{cid}/sessions/start", headers=AUTH).json()["session_id"]
     answer_correctly(cid, s_3)
     backdate(s_3, 3)
     r = daily(cid)
@@ -120,7 +128,7 @@ def main() -> None:
     assert r["active_today"] is False, r
 
     # Day -2: still not adjacent to today/yesterday -> streak stays 0.
-    s_2 = client.post(f"/api/children/{cid}/sessions/start").json()["session_id"]
+    s_2 = client.post(f"/api/children/{cid}/sessions/start", headers=AUTH).json()["session_id"]
     answer_correctly(cid, s_2)
     backdate(s_2, 2)
     r = daily(cid)
@@ -129,7 +137,7 @@ def main() -> None:
 
     # Day -1 (yesterday): now the run {-3,-2,-1} is consecutive and STILL
     # ALIVE (today simply hasn't happened yet) -> streak 3, not active today.
-    s_1 = client.post(f"/api/children/{cid}/sessions/start").json()["session_id"]
+    s_1 = client.post(f"/api/children/{cid}/sessions/start", headers=AUTH).json()["session_id"]
     answer_correctly(cid, s_1)
     backdate(s_1, 1)
     r = daily(cid)
@@ -138,7 +146,7 @@ def main() -> None:
     print("2. 3 consecutive past days -> streak=3 (alive, waiting for today)")
 
     # Today: three attempts -> the streak now includes today: 3 + 1 = 4.
-    s_today = client.post(f"/api/children/{cid}/sessions/start").json()["session_id"]
+    s_today = client.post(f"/api/children/{cid}/sessions/start", headers=AUTH).json()["session_id"]
     for _ in range(3):
         answer_correctly(cid, s_today)
     r = daily(cid)
@@ -149,7 +157,7 @@ def main() -> None:
           f"{target}")
 
     # --- 3. Same-day repeats: plan counts, streak does not inflate. -------
-    s_repeat = client.post(f"/api/children/{cid}/sessions/start").json()["session_id"]
+    s_repeat = client.post(f"/api/children/{cid}/sessions/start", headers=AUTH).json()["session_id"]
     for _ in range(2):
         answer_correctly(cid, s_repeat)
     r = daily(cid)
@@ -199,7 +207,7 @@ def main() -> None:
     ) or 0
     db.close()
     for _ in range(3):
-        client.get(f"/api/children/{cid}/daily")
+        client.get(f"/api/children/{cid}/daily", headers=AUTH)
 
     db = SessionLocal()
     after_attempts = db.scalar(
@@ -208,7 +216,7 @@ def main() -> None:
     db.close()
     assert after_attempts == before_attempts, "daily reads must not create attempts"
 
-    rewards = client.get(f"/api/children/{cid}/rewards").json()
+    rewards = client.get(f"/api/children/{cid}/rewards", headers=AUTH).json()
     # Every answer was correct, so the IN-SESSION rewards streak counts them
     # all (8 answers total) — while the daily streak is currently 0. That is
     # the whole point: two completely separate streaks.

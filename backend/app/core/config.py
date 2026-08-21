@@ -6,7 +6,13 @@ below are deliberately conservative: promotion is slow, demotion is gentle,
 and a child is never dropped below the first level of a skill.
 """
 
+import os
+
+from pydantic import model_validator
 from pydantic_settings import BaseSettings
+
+# The old hardcoded default — REJECTED at startup to prevent token forgery.
+_OLD_SECRET_DEFAULT = "dev-only-secret-change-me-in-production"
 
 
 class Settings(BaseSettings):
@@ -98,6 +104,34 @@ class Settings(BaseSettings):
     consistency_min_streak: int = 5
     # Never return more suggestions than this.
     max_suggestions: int = 4
+
+    # --- Auth (parent accounts) ---------------------------------------------
+    # HMAC signing key for bearer tokens.  REQUIRED — set via TIFL_SECRET_KEY
+    # environment variable.  The app will not start without it.
+    # Generate with:  python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+    secret_key: str
+    # Bearer token lifetime in days.
+    session_expiry_days: int = 30
+
+    @model_validator(mode="after")
+    def _reject_insecure_secret_key(self) -> "Settings":
+        if not self.secret_key or self.secret_key.strip() == "":
+            raise ValueError(
+                "TIFL_SECRET_KEY is not set.  "
+                "The app requires a secret key to sign bearer tokens.  "
+                "Generate one with:  "
+                'python3 -c "import secrets; print(secrets.token_urlsafe(32))"  '
+                "and set it:  export TIFL_SECRET_KEY=<your-generated-key>"
+            )
+        if self.secret_key == _OLD_SECRET_DEFAULT:
+            raise ValueError(
+                "TIFL_SECRET_KEY is still the insecure dev default.  "
+                "Anyone who reads the source code can forge tokens.  "
+                "Generate a real key with:  "
+                'python3 -c "import secrets; print(secrets.token_urlsafe(32))"  '
+                "and set it:  export TIFL_SECRET_KEY=<your-generated-key>"
+            )
+        return self
 
     class Config:
         env_prefix = "TIFL_"

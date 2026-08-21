@@ -14,3 +14,7 @@ numpy==2.2.6
 faster-whisper==1.2.1   # local/offline Whisper; downloads model weights on first real use
 rapidfuzz==3.14.5       # fuzzy ar/en matching of transcripts against option labels
 python-multipart==0.0.32  # required by FastAPI to parse the audio upload form
+
+# Authentication layer — parent accounts (app/auth/)
+passlib[bcrypt]==1.7.4  # password hashing
+email-validator==2.3.0  # Pydantic EmailStr

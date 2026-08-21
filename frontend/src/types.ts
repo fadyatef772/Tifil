@@ -1,5 +1,18 @@
 export type Lang = "ar" | "en";
 
+// --- Auth (parent accounts) ------------------------------------------------
+export interface Parent {
+  id: number;
+  email: string;
+  name: string;
+  created_at: string;
+}
+
+export interface TokenOut {
+  access_token: string;
+  token_type: string;
+}
+
 export interface Child {
   id: number;
   name: string;

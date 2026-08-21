@@ -21,6 +21,7 @@ Uses a throwaway SQLite file so it never touches a real db.
 import os
 
 os.environ["TIFL_DATABASE_URL"] = "sqlite:///./verify_journey.db"
+os.environ["TIFL_SECRET_KEY"] = "test-only-dev-secret-not-for-production"
 
 from sqlalchemy import func, select  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
@@ -36,11 +37,18 @@ Base.metadata.drop_all(engine)
 seed(reset=True)
 client = TestClient(app)
 
+# Create a test parent for auth.
+_parent = client.post(
+    "/api/auth/signup",
+    json={"email": "verify@example.com", "password": "testpass123", "name": "Verify"},
+).json()
+AUTH = {"Authorization": f"Bearer {_parent['access_token']}"}
+
 MASTERY_CORRECT = settings.mastery_correct
 
 
 def journey(child_id: int) -> dict:
-    return client.get(f"/api/children/{child_id}/journey").json()
+    return client.get(f"/api/children/{child_id}/journey", headers=AUTH).json()
 
 
 def stop(j: dict, key: str) -> dict:
@@ -94,13 +102,14 @@ def master_skill(child_id: int, skill_id: int, levels: int) -> None:
                     **body,
                     "tries": 1,
                 },
+                headers=AUTH,
             ).json()
             assert res["is_correct"] is True, "expected a correct answer"
 
 
 def main() -> None:
     child = client.post(
-        "/api/children", json={"name": "Journey Test Child", "preferred_language": "ar"}
+        "/api/children", json={"name": "Journey Test Child", "preferred_language": "ar"}, headers=AUTH
     ).json()
     cid = child["id"]
 
@@ -118,7 +127,7 @@ def main() -> None:
     dressing = stop(j, "dressing")
     client.post(
         f"/api/children/{cid}/goals",
-        json={"skill_id": dressing["skill_id"], "target_level": 2},
+        json={"skill_id": dressing["skill_id"], "target_level": 2}, headers=AUTH,
     )
     j2 = journey(cid)
     now_current = [s for s in j2["stops"] if s["status"] == "current"][0]
@@ -138,8 +147,8 @@ def main() -> None:
           f"(stars now {j3['total_stars']})")
 
     # 4. Archiving the goal returns focus to the first non-mastered stop.
-    goals = client.get(f"/api/children/{cid}/goals").json()
-    client.patch(f"/api/goals/{goals[0]['id']}", json={"status": "archived"})
+    goals = client.get(f"/api/children/{cid}/goals", headers=AUTH).json()
+    client.patch(f"/api/goals/{goals[0]['id']}", json={"status": "archived"}, headers=AUTH)
     j4 = journey(cid)
     focus = [s for s in j4["stops"] if s["status"] == "current"][0]
     assert focus["skill_key"] == "numbers", "focus should advance to 'numbers'"

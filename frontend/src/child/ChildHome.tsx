@@ -58,6 +58,7 @@ export default function ChildHome({ lang }: Props) {
       <ExercisePlayer
         childId={active.id}
         lang={lang}
+        speechLang={active.preferred_language}
         onExit={() => {
           setPlaying(false);
           refresh();

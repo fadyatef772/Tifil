@@ -59,7 +59,7 @@ Both feed one engine and one store ──────┘
 backend/
   app/
     core/        config (engine + ML + speech + sessions/goals tunables) · database
-    domain/      models (ORM: ... Session, Goal, LevelUpEvent) · schemas (API contract)
+    domain/      models (ORM: Parent, Child, ... Session, Goal, LevelUpEvent) · schemas (API contract)
     services/    adaptive_engine.py   ← the pedagogical core (goal-weighting
                  goals.py                added, see below — level logic itself
                  rewards.py              is unchanged; rewards ride alongside)
@@ -69,8 +69,8 @@ backend/
                                         Routine"; the rewards streak is
                                         untouched)
                  parent_view.py      ← read-only parent rollups + gentle,
-                                       rule-based home-activity suggestions
-                                       (never a diagnosis — see "Parent View")
+                                        rule-based home-activity suggestions
+                                        (never a diagnosis — see "Parent View")
                  exercise_types/     ← pluggable exercise-type system, see below
     ml/          struggle_predictor.py  ← ML layer, see below
                  synthetic_data.py, features.py, intervention.py
@@ -78,18 +78,27 @@ backend/
                  artifacts/struggle_predictor.joblib  ← trained artifact
     speech/      transcriber.py (Whisper/stub), match.py  ← DL layer, see below
     api/         routes.py            ← thin HTTP layer
+                 auth.py              ← parent authentication (signup, login, me)
     seed.py      bilingual starter curriculum
     main.py      FastAPI entrypoint
   verify.py           end-to-end check of the core learning loop
+  verify_auth.py      end-to-end check of parent authentication (12 checks)
+  link_orphan_children.py  one-time migration: links pre-auth orphaned children
+                       to a parent (idempotent, safe on existing data)
   verify_sessions.py  end-to-end check of sessions + goals
   verify_rewards.py   end-to-end check of stars + streak + avatar unlocks
   verify_exercise_types.py  end-to-end check of the pluggable exercise types
   verify_journey.py   end-to-end check of the child's learning-journey path
   verify_parent_view.py end-to-end check of the parent view (read-only
                      rollups + gentle suggestions, see below)
+  verify_daily_routine.py end-to-end check of the daily routine (streak,
+                      today's plan, calendar — derived, read-only)
+  verify_speech_matching.py deterministic check of the Arabic speech
+                      normalization + fuzzy-matching pipeline (no audio)
   verify_answers.py   shared "what a correct/wrong answer looks like" helper
 frontend/
   src/
+    auth/        AuthContext · LoginScreen · SignupScreen
     child/       ChildHome → LearningJourney → ExercisePlayer (tap or
                  optional mic, session stars)  exercises/  registry.tsx +
                  Choice/Matching/Sequencing/Tracing
@@ -109,6 +118,10 @@ cd backend
 python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 
+# REQUIRED: generate a secret key for bearer token signing.
+# The app will not start without TIFL_SECRET_KEY.
+export TIFL_SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))")
+
 python -m app.seed --reset          # create + seed the database
 python -m app.ml.train_struggle_predictor   # optional: retrain the ML layer
                                              # (a trained artifact ships in
@@ -116,6 +129,11 @@ python -m app.ml.train_struggle_predictor   # optional: retrain the ML layer
 uvicorn app.main:app --reload --port 8000
 # API docs at http://localhost:8000/docs
 ```
+
+You can also put `TIFL_SECRET_KEY` in a `.env` file (see `.env.example` for a
+template). The app checks at startup that the key is set and is not the old
+insecure dev default — it will refuse to start with a clear error message if
+either check fails.
 
 The speech endpoint works with no extra setup — it downloads Whisper's
 weights on first real use (see "Deep Learning layer" below) or falls back
@@ -126,6 +144,15 @@ confirms level-ups fire, checks progress):
 
 ```bash
 python verify.py
+```
+
+Verify parent authentication end to end (signup, login, me, child creation with
+auto parent_id, scoped child list, cross-parent access denied, unauthenticated
+denied, password minimum length, duplicate email rejected, invalid token
+rejected — 10 checks):
+
+```bash
+python verify_auth.py
 ```
 
 Verify sessions + goals end to end (starts a session, plays it to its
@@ -182,6 +209,19 @@ today's-plan progress is exact, and the daily reads never write):
 
 ```bash
 python verify_daily_routine.py
+```
+
+Verify the speech answer-**matching** pipeline deterministically (no audio
+needed — this tests the normalization + fuzzy-matching that runs *after*
+transcription): Arabic tashkeel/kashida stripping, alef/ta-marbuta/maqsura
+folds and the new ؤ→و, ئ→ي, لا-ligature folds are applied to **both** the
+transcript and the expected label, and the matcher turns messy transcripts —
+including the real outputs observed from Whisper (`أحمرو`, `أهماعوا`,
+`أزرقه`, `أفضل`) — into a confident match on the real option or an honest
+"unclear", never a guess:
+
+```bash
+python verify_speech_matching.py
 ```
 
 The verify scripts use a throwaway SQLite file each, so they never touch a
@@ -385,31 +425,54 @@ POST /api/speech-answer   (multipart form: child_id, exercise_id, tries,
 ```
 
 The audio is transcribed, the transcript is fuzzy-matched (ar/en aware —
-Arabic diacritics and letter-shape variants like أ/إ/آ→ا are folded before
-comparing) against the exercise's option labels
-(`speech_match_threshold` in config, default 0.55), and a confident match is
-recorded through the *exact same* `record_answer` the tap flow uses. A
-transcript that matches nothing well enough is reported as
-`feedback: "unclear"` and is **not** logged as an attempt — an
-unintelligible recording can't count against the child, consistent with the
-app's no-punishment design.
+Arabic diacritics and letter-shape variants are folded before comparing) against
+the exercise's option labels (`speech_match_threshold` in config, default 0.55),
+and a confident match is recorded through the *exact same* `record_answer` the
+tap flow uses. A transcript that matches nothing well enough is reported as
+`feedback: "unclear"` and is **not** logged as an attempt — an unintelligible
+recording can't count against the child, consistent with the app's
+no-punishment design.
+
+**The answer language is pinned, never auto-detected.** The exercise/child
+language is sent with the request (the frontend uses the child's
+`preferred_language`, not the adult's UI toggle), and `transcribe()` requires an
+explicit `"ar"`/`"en"` — auto-detection is dramatically worse for short Arabic
+words (measured: they came back as Latin/Cyrillic gibberish).
+
+**Arabic fixes that actually work** (measured on identical audio, real Arabic
+speech → the live endpoint, correct answer "أحمر" for a colors exercise):
+
+| config | transcript | match |
+|---|---|---|
+| old default (`base`, no vocabulary hint) | `أهما رو` | **0.55 → "unclear" (correct answer rejected)** |
+| new default (`small` + vocabulary hint) | `أحمر` | **1.00 → correct** |
+
+Three things fixed this:
+
+1. **Bigger model.** The default Whisper model is now `"small"` (~460MB) — the
+   accuracy/speed sweet spot for an offline family PC and a much better fit
+   for Arabic than `tiny`/`base`. A stronger machine can opt into `"medium"`
+   (~1.5GB, better Arabic still, but ~3x the download and noticeably slower on
+   CPU) with `TIFL_WHISPER_MODEL_SIZE=medium` — no code change.
+2. **Vocabulary biasing.** The endpoint builds a Whisper `initial_prompt` from
+   the current exercise's option labels in the answer language, so decoding is
+   biased toward the actual choices; `beam_size` rose from 1 to 3. This alone
+   lifted `base` to exact on the same audio.
+3. **Stronger Arabic normalization.** `app/speech/match.py` now also folds
+   ؤ→و and ئ→ي (hamza-on-waw/yeh) and every lam-alef ligature form (ﻻ→لا) on
+   top of the existing tashkeel/kashida stripping and أ/إ/آ→ا, ة→ه, ى→ي folds —
+   applied identically to the transcript and the expected label.
 
 **Model weights are not bundled.** The first time transcription is actually
-needed, faster-whisper downloads the model (default size `"base"`, ~150MB)
-from Hugging Face and caches it — after that it's fully offline. This was
-verified working in this development sandbox: a real recording of the word
-"red" was transcribed to `"Red"`, fuzzy-matched to the correct option, and
-recorded as a correct answer through the live endpoint (`engine` in the
-response reported `"whisper-base"`). If a machine has no internet on first
-run, or `faster-whisper` isn't installed, or `TIFL_WHISPER_MODEL_SIZE`
-points at a model that fails to download, the endpoint **does not crash or
-fake success** — it transparently falls back to a stub transcriber that
-always returns an empty transcript (`feedback: "unclear"`, `engine: "stub"`),
-so the request/response contract and the matching logic stay testable even
-with zero internet. Set `TIFL_SPEECH_STUB=1` to force stub mode (used by
-the backend's own tests so they never depend on a model download). Bump
-`TIFL_WHISPER_MODEL_SIZE` to `small` or `medium` for better accuracy at a
-larger one-time download.
+needed, faster-whisper downloads the model (default `"small"`, ~460MB) from
+Hugging Face and caches it — after that it's fully offline. If a machine has
+no internet on first run, or `faster-whisper` isn't installed, or
+`TIFL_WHISPER_MODEL_SIZE` points at a model that fails to download, the
+endpoint **does not crash or fake success** — it transparently falls back to a
+stub transcriber that always returns an empty transcript (`feedback: "unclear"`,
+`engine: "stub"`), so the request/response contract and the matching logic stay
+testable even with zero internet. Set `TIFL_SPEECH_STUB=1` to force stub mode
+(used by the backend's own tests so they never depend on a model download).
 
 In the frontend, `ExercisePlayer` shows an additional 🎤 "say the answer"
 button, feature-detected (`navigator.mediaDevices` + `MediaRecorder`) so it
@@ -593,6 +656,89 @@ stars plus a small *done/target*, and the 14-day dot calendar. Reusing the
 app's existing styles and animations, RTL/LTR aware, no new libraries. The
 streak refreshes whenever the child returns to the journey, so playing today
 is reflected immediately.
+
+---
+
+## Parent Authentication — accounts, scoping, and the child picker
+
+Only parents have credentials (email + password). Children **never** type a
+password — they pick their avatar from the child-picker screen after the parent
+is logged in.
+
+**Design decisions:**
+
+- **Passwords are hashed with `passlib[bcrypt]`** — never stored or logged in
+  plaintext. `app/core/security.py` provides `hash_password()` / `verify_password()`.
+- **Bearer tokens** are HMAC-signed base64 (no JWT library dependency — the
+  simplest secure option). Contains `{parent_id, exp}`. Token lifetime is
+  configurable via `TIFL_SESSION_EXPIRY_DAYS` (default 30 days). In production
+  `TIFL_SECRET_KEY` **must** be set to a strong random value.
+- **`parent_id` on `children` table is nullable** — existing children (pre-auth)
+  are preserved untouched; they sit with `parent_id=NULL` until claimed. The
+  `create_all` call on startup adds the column without touching existing data.
+- **No email verification, no password reset, no OAuth** — kept intentionally
+  minimal for now. Can be added later.
+
+**Database changes (additive, no migration needed):**
+
+| change | table | why |
+|---|---|---|
+| new table `parents` | `parents` | parent accounts (id, email, password_hash, name, created_at) |
+| new nullable column `parent_id` | `children` | links each child to a parent; existing children stay `NULL` |
+
+`Base.metadata.create_all()` creates the `parents` table and adds the
+`parent_id` column as a no-op on an existing `tifl.db` — existing children and
+their data are preserved untouched (verified against the real database).
+
+**API routes** (`app/api/auth.py`):
+
+```
+POST /api/auth/signup  { email, password, name }  -> { access_token }
+POST /api/auth/login   { email, password }         -> { access_token }
+GET  /api/auth/me      (Bearer token)              -> { id, email, name, created_at }
+```
+
+All `/api/children` endpoints now require a valid bearer token. Children are
+scoped: a parent can only see and interact with their own children. Accessing
+another parent's child returns 404 (not 403 — to avoid leaking existence).
+
+**Frontend** (`frontend/src/auth/`):
+
+- `AuthProvider` manages token state in React (sessionStorage) and restores on
+  mount. All `api.ts` calls include the `Authorization: Bearer` header when a
+  token is set.
+- `LoginScreen` / `SignupScreen`: clean, adult-facing, bilingual ar/en, RTL/LTR
+  aware. Minimum password length is 8 characters.
+- `App.tsx` conditionally renders login/signup screens when unauthenticated, or
+  the full app (with a logout button in the header) when authenticated.
+- `ChildHome` already uses `api.listChildren()` which now returns only the
+  logged-in parent's children — no frontend changes needed beyond the auth
+  wrapper.
+
+Verify the auth layer end to end (signup, login, me, child creation with
+auto parent_id, scoped child list, cross-parent access denied, unauthenticated
+denied, password minimum length, duplicate email rejected, invalid token
+rejected, missing secret key fails fast, old default rejected — 12 checks):
+
+```bash
+python verify_auth.py
+```
+
+**Claiming orphaned children (pre-auth data):**
+
+Children that existed before parent authentication was added sit with
+`parent_id=NULL` and are unreachable via the API. Run the one-time migration
+script to link them to a parent:
+
+```bash
+# Creates the parent if needed, links all orphaned children to them.
+python link_orphan_children.py --email parent@example.com --name "Parent Name"
+```
+
+The script is idempotent — running it again finds nothing to do. It only adds
+the `parent_id` column and `parents` table if they don't already exist, and
+never modifies or deletes existing child data. All attempts, sessions, goals,
+rewards, and mastery records are preserved.
 
 ---
 

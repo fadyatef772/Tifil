@@ -14,6 +14,7 @@ import ExerciseRenderer from "./exercises/registry";
 interface Props {
   childId: number;
   lang: Lang;
+  speechLang: Lang;
   onExit: () => void;
 }
 
@@ -23,7 +24,7 @@ const micSupported =
   !!navigator.mediaDevices?.getUserMedia &&
   typeof MediaRecorder !== "undefined";
 
-export default function ExercisePlayer({ childId, lang, onExit }: Props) {
+export default function ExercisePlayer({ childId, lang, speechLang, onExit }: Props) {
   const s = t[lang];
   const [exercise, setExercise] = useState<Exercise | null>(null);
   const [loading, setLoading] = useState(true);
@@ -176,11 +177,14 @@ export default function ExercisePlayer({ childId, lang, onExit }: Props) {
     if (!exercise) return;
     setProcessingSpeech(true);
     try {
+      // Speech is always interpreted in the child's preferred language (not
+      // the adult's UI toggle) so Whisper is never auto-detecting or forced
+      // into the wrong language.
       const res = await api.speechAnswer(
         childId,
         exercise.id,
         triesRef.current,
-        lang,
+        speechLang,
         audio,
         sessionId,
       );

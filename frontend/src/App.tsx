@@ -1,4 +1,7 @@
 import { useEffect, useState } from "react";
+import { AuthProvider, useAuth } from "./auth/AuthContext";
+import LoginScreen from "./auth/LoginScreen";
+import SignupScreen from "./auth/SignupScreen";
 import Dashboard from "./adult/Dashboard";
 import ParentView from "./adult/ParentView";
 import ChildHome from "./child/ChildHome";
@@ -7,22 +10,38 @@ import type { Lang } from "./types";
 
 type Mode = "child" | "adult";
 type AdultView = "progress" | "parent";
+type AuthView = "login" | "signup";
 
-export default function App() {
-  const [lang, setLang] = useState<Lang>("ar");
+function AppInner({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void }) {
+  const { parent, loading, logout } = useAuth();
   const [mode, setMode] = useState<Mode>("child");
   const [adultView, setAdultView] = useState<AdultView>("progress");
+  const [authView, setAuthView] = useState<AuthView>("login");
   const s = t[lang];
 
-  // Keep document direction in sync so both RTL and LTR lay out correctly.
   useEffect(() => {
     document.documentElement.lang = lang;
     document.documentElement.dir = lang === "ar" ? "rtl" : "ltr";
   }, [lang]);
 
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-stone-50">
+        <span className="text-4xl animate-pulse">🧸</span>
+      </div>
+    );
+  }
+
+  if (!parent) {
+    return authView === "login" ? (
+      <LoginScreen lang={lang} onSwitch={() => setAuthView("signup")} />
+    ) : (
+      <SignupScreen lang={lang} onSwitch={() => setAuthView("login")} />
+    );
+  }
+
   return (
     <div className="min-h-screen flex flex-col">
-      {/* Top chrome — only for the adult; kept minimal in child mode */}
       <header className="flex items-center justify-between px-6 py-4 border-b border-stone-200/70 bg-[var(--paper)]">
         <div className="flex items-center gap-3">
           <span className="text-3xl" aria-hidden>
@@ -60,6 +79,12 @@ export default function App() {
             className="px-4 py-1.5 rounded-full bg-white shadow-sm text-sm font-semibold hover:bg-stone-100"
           >
             {s.switchLang}
+          </button>
+          <button
+            onClick={logout}
+            className="px-4 py-1.5 rounded-full bg-white shadow-sm text-sm font-semibold text-stone-500 hover:bg-stone-100"
+          >
+            {s.logout}
           </button>
         </div>
       </header>
@@ -102,5 +127,15 @@ export default function App() {
         )}
       </main>
     </div>
+  );
+}
+
+export default function App() {
+  const [lang, setLang] = useState<Lang>("ar");
+
+  return (
+    <AuthProvider>
+      <AppInner lang={lang} setLang={setLang} />
+    </AuthProvider>
   );
 }

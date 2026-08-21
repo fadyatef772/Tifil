@@ -33,15 +33,37 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+class Parent(Base):
+    """Parent account. Only parents have credentials (email + password);
+    children NEVER type a password — they pick their avatar from the
+    child picker screen after the parent is logged in."""
+
+    __tablename__ = "parents"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    email: Mapped[str] = mapped_column(String(255), unique=True)
+    password_hash: Mapped[str] = mapped_column(String(255))
+    name: Mapped[str] = mapped_column(String(120))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+    children: Mapped[list["Child"]] = relationship(
+        back_populates="parent", cascade="all, delete-orphan"
+    )
+
+
 class Child(Base):
     __tablename__ = "children"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    parent_id: Mapped[int | None] = mapped_column(
+        ForeignKey("parents.id"), nullable=True
+    )
     name: Mapped[str] = mapped_column(String(120))
     # "ar" or "en" — the child's default interface language.
     preferred_language: Mapped[str] = mapped_column(String(2), default="ar")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
+    parent: Mapped["Parent | None"] = relationship(back_populates="children")
     masteries: Mapped[list["Mastery"]] = relationship(
         back_populates="child", cascade="all, delete-orphan"
     )
