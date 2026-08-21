@@ -27,6 +27,7 @@ import os
 from datetime import datetime, timedelta, timezone
 
 os.environ["TIFL_DATABASE_URL"] = "sqlite:///./verify_parent_view.db"
+os.environ["TIFL_SECRET_KEY"] = "test-only-dev-secret-not-for-production"
 
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import func, select  # noqa: E402
@@ -42,6 +43,13 @@ import verify_answers  # noqa: E402,F401
 Base.metadata.drop_all(engine)
 seed(reset=True)
 client = TestClient(app)
+
+# Create a test parent for auth.
+_parent = client.post(
+    "/api/auth/signup",
+    json={"email": "verify@example.com", "password": "testpass123", "name": "Verify"},
+).json()
+AUTH = {"Authorization": f"Bearer {_parent['access_token']}"}
 
 BACKDATE_DAYS = [0, 3, 8]  # how many days ago each batch "happened"
 
@@ -78,6 +86,7 @@ def answer(child_id: int, skill_id: int, correct: bool, session_id: int | None =
             **body,
             "tries": 1,
         },
+        headers=AUTH,
     ).json()
     assert res["is_correct"] is correct, "answer verdict should match what we posted"
     return res
@@ -118,7 +127,7 @@ def backdate(batch_days: int, session_id: int, level_up_skill_id: int | None) ->
 
 def main() -> None:
     child = client.post(
-        "/api/children", json={"name": "Parent View Test Child", "preferred_language": "ar"}
+        "/api/children", json={"name": "Parent View Test Child", "preferred_language": "ar"}, headers=AUTH
     ).json()
     cid = child["id"]
 
@@ -132,7 +141,7 @@ def main() -> None:
     # --- ends up exactly where the newest batch leaves it.
 
     # Batch C — 8 days ago (OUTSIDE the week window): animals, mostly wrong.
-    s_c = client.post(f"/api/children/{cid}/sessions/start").json()["session_id"]
+    s_c = client.post(f"/api/children/{cid}/sessions/start", headers=AUTH).json()["session_id"]
     answer(cid, animals, False, s_c)
     answer(cid, animals, False, s_c)
     answer(cid, animals, True, s_c)
@@ -140,7 +149,7 @@ def main() -> None:
 
     # Batch B — 3 days ago (INSIDE the week window, not today): body_parts,
     # all correct, which promotes body_parts one level (a level-up event).
-    s_b = client.post(f"/api/children/{cid}/sessions/start").json()["session_id"]
+    s_b = client.post(f"/api/children/{cid}/sessions/start", headers=AUTH).json()["session_id"]
     answer(cid, body_parts, True, s_b)
     answer(cid, body_parts, True, s_b)
     answer(cid, body_parts, True, s_b)
@@ -149,7 +158,7 @@ def main() -> None:
 
     # Batch A — today (both windows): colors mostly wrong (low recent accuracy),
     # then five consecutive correct answers to finish the streak at 5.
-    s_a = client.post(f"/api/children/{cid}/sessions/start").json()["session_id"]
+    s_a = client.post(f"/api/children/{cid}/sessions/start", headers=AUTH).json()["session_id"]
     answer(cid, colors, False, s_a)
     answer(cid, colors, False, s_a)
     answer(cid, colors, True, s_a)
@@ -168,7 +177,7 @@ def main() -> None:
     today_stars = today_correct
     total_stars = week_correct + 1  # + batch C's single correct answer
 
-    summary = client.get(f"/api/children/{cid}/parent-summary").json()
+    summary = client.get(f"/api/children/{cid}/parent-summary", headers=AUTH).json()
     today, week = summary["today"], summary["week"]
 
     assert today["activities_done"] == today_activities, (today, week)
@@ -202,7 +211,7 @@ def main() -> None:
     print(f"3. streak={summary['current_streak']}, total stars={summary['total_stars']}")
 
     # --- Suggestions must follow the documented rules. --------------------
-    suggestions = client.get(f"/api/children/{cid}/suggestions").json()
+    suggestions = client.get(f"/api/children/{cid}/suggestions", headers=AUTH).json()
     types = [s["type"] for s in suggestions]
     assert 2 <= len(suggestions) <= 4, suggestions
 
@@ -235,8 +244,8 @@ def main() -> None:
     db.close()
 
     for _ in range(3):
-        client.get(f"/api/children/{cid}/parent-summary")
-        client.get(f"/api/children/{cid}/suggestions")
+        client.get(f"/api/children/{cid}/parent-summary", headers=AUTH)
+        client.get(f"/api/children/{cid}/suggestions", headers=AUTH)
 
     db = SessionLocal()
     after_attempts = db.scalar(

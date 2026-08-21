@@ -24,6 +24,7 @@ Uses a throwaway SQLite file so it never touches a real db.
 import os
 
 os.environ["TIFL_DATABASE_URL"] = "sqlite:///./verify_exercise_types.db"
+os.environ["TIFL_SECRET_KEY"] = "test-only-dev-secret-not-for-production"
 
 from sqlalchemy import func, select  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
@@ -39,6 +40,13 @@ Base.metadata.drop_all(engine)
 seed(reset=True)
 client = TestClient(app)
 
+# Create a test parent for auth.
+_parent = client.post(
+    "/api/auth/signup",
+    json={"email": "verify@example.com", "password": "testpass123", "name": "Verify"},
+).json()
+AUTH = {"Authorization": f"Bearer {_parent['access_token']}"}
+
 MASTERY_CORRECT = 4  # must match settings.mastery_correct
 
 
@@ -53,6 +61,7 @@ def post_answer(child_id: int, exercise: Exercise, body: dict, tries: int = 1) -
     return client.post(
         "/api/answers",
         json={"child_id": child_id, "exercise_id": exercise.id, **body, "tries": tries},
+        headers=AUTH,
     ).json()
 
 
@@ -108,7 +117,7 @@ def test_type(child_id: int, type_key: str, initial_stars: int) -> int:
     assert wrong["is_correct"] is False, f"{type_key} wrong answer was accepted"
     assert wrong["feedback"] == "try_again"
     assert wrong["rewards"]["streak"] == 0
-    rewards = client.get(f"/api/children/{child_id}/rewards").json()
+    rewards = client.get(f"/api/children/{child_id}/rewards", headers=AUTH).json()
     assert rewards["total_stars"] == initial_stars, (
         f"wrong answer changed stars: {initial_stars} -> {rewards['total_stars']}"
     )
@@ -139,12 +148,12 @@ def test_type(child_id: int, type_key: str, initial_stars: int) -> int:
 
 def main() -> None:
     child = client.post(
-        "/api/children", json={"name": "Types Test Child", "preferred_language": "ar"}
+        "/api/children", json={"name": "Types Test Child", "preferred_language": "ar"}, headers=AUTH
     ).json()
     cid = child["id"]
     print(f"Created child #{cid}: {child['name']}")
 
-    initial = client.get(f"/api/children/{cid}/rewards").json()["total_stars"]
+    initial = client.get(f"/api/children/{cid}/rewards", headers=AUTH).json()["total_stars"]
     assert initial == 0
 
     # Legacy choice: still answers through the plain `option_id` field, and
@@ -168,7 +177,7 @@ def main() -> None:
 
     # Every exercise served by the engine carries a payload with no answer
     # keys, whatever its type.
-    nxt = client.get(f"/api/children/{cid}/next-exercise").json()["exercise"]
+    nxt = client.get(f"/api/children/{cid}/next-exercise", headers=AUTH).json()["exercise"]
     served = exercise_types.serialize_for_child(load_exercise(nxt["id"]))
     assert "answer" not in served and "correct_option_id" not in served
     print(f"\nServed exercise ({nxt['type']}) payload also carries no answer keys")

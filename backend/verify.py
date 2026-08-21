@@ -8,6 +8,7 @@ SQLite file so it never touches a real db.
 import os
 
 os.environ["TIFL_DATABASE_URL"] = "sqlite:///./verify.db"
+os.environ["TIFL_SECRET_KEY"] = "test-only-dev-secret-not-for-production"
 
 from fastapi.testclient import TestClient  # noqa: E402
 
@@ -20,12 +21,19 @@ Base.metadata.drop_all(engine)
 seed(reset=True)
 client = TestClient(app)
 
+# Create a test parent for auth.
+_parent = client.post(
+    "/api/auth/signup",
+    json={"email": "verify@example.com", "password": "testpass123", "name": "Verify"},
+).json()
+AUTH = {"Authorization": f"Bearer {_parent['access_token']}"}
+
 
 def answer_correctly(child_id: int, n: int) -> list[dict]:
     """Fetch and correctly answer n exercises, returning each result."""
     results = []
     for _ in range(n):
-        nxt = client.get(f"/api/children/{child_id}/next-exercise").json()
+        nxt = client.get(f"/api/children/{child_id}/next-exercise", headers=AUTH).json()
         ex = nxt["exercise"]
         if ex is None:
             break
@@ -41,6 +49,7 @@ def answer_correctly(child_id: int, n: int) -> list[dict]:
         res = client.post(
             "/api/answers",
             json={"child_id": child_id, "exercise_id": ex["id"], **body, "tries": 1},
+            headers=AUTH,
         ).json()
         results.append({"skill": ex["skill_key"], "level": ex["level"], **res})
     return results
@@ -49,14 +58,15 @@ def answer_correctly(child_id: int, n: int) -> list[dict]:
 def main():
     # 1. Create a child
     child = client.post(
-        "/api/children", json={"name": "Test Child", "preferred_language": "ar"}
+        "/api/children", json={"name": "Test Child", "preferred_language": "ar"},
+        headers=AUTH,
     ).json()
     cid = child["id"]
     print(f"Created child #{cid}: {child['name']}")
 
     # 2. Health + first exercise served
     assert client.get("/api/health").json()["status"] == "ok"
-    first = client.get(f"/api/children/{cid}/next-exercise").json()
+    first = client.get(f"/api/children/{cid}/next-exercise", headers=AUTH).json()
     assert first["exercise"] is not None, "engine served no exercise"
     print(f"First exercise skill: {first['exercise']['skill_key']} "
           f"(level {first['exercise']['level']})")
@@ -74,7 +84,7 @@ def main():
     assert level_ups, "expected at least one promotion after 40 correct answers"
 
     # 4. A wrong answer returns encouraging feedback, never an error
-    nxt = client.get(f"/api/children/{cid}/next-exercise").json()["exercise"]
+    nxt = client.get(f"/api/children/{cid}/next-exercise", headers=AUTH).json()["exercise"]
     from app.core.database import SessionLocal
     from app.domain.models import Exercise
 
@@ -84,13 +94,14 @@ def main():
     wrong = client.post(
         "/api/answers",
         json={"child_id": cid, "exercise_id": nxt["id"], **body, "tries": 3},
+        headers=AUTH,
     ).json()
     assert wrong["is_correct"] is False
     assert wrong["feedback"] == "try_again"
     print(f"Wrong answer feedback: '{wrong['feedback']}' (no punishment)")
 
     # 5. Progress report
-    prog = client.get(f"/api/children/{cid}/progress").json()
+    prog = client.get(f"/api/children/{cid}/progress", headers=AUTH).json()
     print(f"\nProgress for {prog['child']['name']}: "
           f"{prog['total_attempts']} attempts, "
           f"{prog['overall_accuracy']:.0%} accuracy")

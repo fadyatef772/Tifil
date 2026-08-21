@@ -15,6 +15,7 @@ Uses a throwaway SQLite file so it never touches a real db.
 import os
 
 os.environ["TIFL_DATABASE_URL"] = "sqlite:///./verify_rewards.db"
+os.environ["TIFL_SECRET_KEY"] = "test-only-dev-secret-not-for-production"
 
 from fastapi.testclient import TestClient  # noqa: E402
 
@@ -28,11 +29,18 @@ Base.metadata.drop_all(engine)
 seed(reset=True)
 client = TestClient(app)
 
+# Create a test parent for auth.
+_parent = client.post(
+    "/api/auth/signup",
+    json={"email": "verify@example.com", "password": "testpass123", "name": "Verify"},
+).json()
+AUTH = {"Authorization": f"Bearer {_parent['access_token']}"}
+
 AVATAR_STEP = 10  # must match settings.rewards_avatar_star_step
 
 
 def fetch_next(child_id: int) -> dict:
-    nxt = client.get(f"/api/children/{child_id}/next-exercise").json()
+    nxt = client.get(f"/api/children/{child_id}/next-exercise", headers=AUTH).json()
     assert nxt["exercise"] is not None, "engine served no exercise"
     return nxt["exercise"]
 
@@ -45,6 +53,7 @@ def answer_correctly(child_id: int, tries: int = 1) -> dict:
     res = client.post(
         "/api/answers",
         json={"child_id": child_id, "exercise_id": ex["id"], **body, "tries": tries},
+        headers=AUTH,
     ).json()
     assert res["is_correct"] is True, "expected a correct answer"
     return res
@@ -53,12 +62,12 @@ def answer_correctly(child_id: int, tries: int = 1) -> dict:
 def main() -> None:
     # 1. Fresh child starts with 0 stars, 0 streak, starter avatar unlocked.
     child = client.post(
-        "/api/children", json={"name": "Rewards Test Child", "preferred_language": "ar"}
+        "/api/children", json={"name": "Rewards Test Child", "preferred_language": "ar"}, headers=AUTH
     ).json()
     cid = child["id"]
     print(f"Created child #{cid}: {child['name']}")
 
-    rewards0 = client.get(f"/api/children/{cid}/rewards").json()
+    rewards0 = client.get(f"/api/children/{cid}/rewards", headers=AUTH).json()
     assert rewards0["total_stars"] == 0
     assert rewards0["streak"] == 0
     assert rewards0["active_avatar"]["id"] == "fox"
@@ -81,6 +90,7 @@ def main() -> None:
     wrong = client.post(
         "/api/answers",
         json={"child_id": cid, "exercise_id": wrong_ex["id"], **wrong_body, "tries": 1},
+        headers=AUTH,
     ).json()
     assert wrong["is_correct"] is False
     assert wrong["rewards"]["stars"] == 3, "wrong answer must not reduce stars"
@@ -95,6 +105,7 @@ def main() -> None:
     res = client.post(
         "/api/answers",
         json={"child_id": cid, "exercise_id": wrong_ex["id"], **correct_body, "tries": 2},
+        headers=AUTH,
     ).json()
     assert res["is_correct"] is True
     assert res["rewards"]["stars"] == 4, "solving the exercise still earns the star"
@@ -123,7 +134,7 @@ def main() -> None:
             )
 
     # 6. GET /rewards agrees: koala unlocked and reflected everywhere.
-    rewards_final = client.get(f"/api/children/{cid}/rewards").json()
+    rewards_final = client.get(f"/api/children/{cid}/rewards", headers=AUTH).json()
     assert rewards_final["total_stars"] == AVATAR_STEP
     # Uninterrupted run since step 4's correct answer: 1 (step 4) + need.
     assert rewards_final["streak"] == need + 1

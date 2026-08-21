@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.api.auth import get_current_parent
 from app.core.config import settings
 from app.core.database import get_db
 from app.domain import schemas
@@ -20,6 +21,7 @@ from app.domain.models import (
     Goal,
     LevelUpEvent,
     Mastery,
+    Parent,
     Rewards,
     Skill,
     SkillLevel,
@@ -43,10 +45,27 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _get_owned_child(child_id: int, parent: Parent, db: Session) -> Child:
+    """Fetch a child by id and verify they belong to the current parent.
+    Raises 404 if not found or not owned."""
+    child = db.get(Child, child_id)
+    if not child or child.parent_id != parent.id:
+        raise HTTPException(404, "Child not found")
+    return child
+
+
 # --- Children -------------------------------------------------------------
 @router.post("/children", response_model=schemas.ChildOut)
-def create_child(payload: schemas.ChildCreate, db: Session = Depends(get_db)):
-    child = Child(name=payload.name, preferred_language=payload.preferred_language)
+def create_child(
+    payload: schemas.ChildCreate,
+    parent: Parent = Depends(get_current_parent),
+    db: Session = Depends(get_db),
+):
+    child = Child(
+        parent_id=parent.id,
+        name=payload.name,
+        preferred_language=payload.preferred_language,
+    )
     db.add(child)
     db.commit()
     db.refresh(child)
@@ -55,30 +74,47 @@ def create_child(payload: schemas.ChildCreate, db: Session = Depends(get_db)):
 
 
 @router.get("/children", response_model=list[schemas.ChildOut])
-def list_children(db: Session = Depends(get_db)):
-    return list(db.scalars(select(Child).order_by(Child.name)).all())
+def list_children(
+    parent: Parent = Depends(get_current_parent),
+    db: Session = Depends(get_db),
+):
+    return list(
+        db.scalars(
+            select(Child)
+            .where(Child.parent_id == parent.id)
+            .order_by(Child.name)
+        ).all()
+    )
 
 
 @router.get("/children/{child_id}", response_model=schemas.ChildOut)
-def get_child(child_id: int, db: Session = Depends(get_db)):
-    child = db.get(Child, child_id)
-    if not child:
-        raise HTTPException(404, "Child not found")
+def get_child(
+    child_id: int,
+    parent: Parent = Depends(get_current_parent),
+    db: Session = Depends(get_db),
+):
+    child = _get_owned_child(child_id, parent, db)
     return child
 
 
 @router.get("/children/{child_id}/rewards", response_model=schemas.RewardsOut)
-def get_rewards(child_id: int, db: Session = Depends(get_db)):
+def get_rewards(
+    child_id: int,
+    parent: Parent = Depends(get_current_parent),
+    db: Session = Depends(get_db),
+):
     """Stars + streak + the full avatar catalog with per-avatar unlock state.
     Read-only; the answer endpoints below are the only writers."""
-    child = db.get(Child, child_id)
-    if not child:
-        raise HTTPException(404, "Child not found")
+    child = _get_owned_child(child_id, parent, db)
     return schemas.RewardsOut(**rewards_service.get(db, child))
 
 
 @router.get("/children/{child_id}/journey", response_model=schemas.JourneyOut)
-def child_journey(child_id: int, db: Session = Depends(get_db)):
+def child_journey(
+    child_id: int,
+    parent: Parent = Depends(get_current_parent),
+    db: Session = Depends(get_db),
+):
     """The child's learning path: every skill as an ordered stop with a
     derived status. A pure READ-ONLY projection over existing data — the
     engine, goals, rewards, ML, speech and exercise-type systems are never
@@ -96,9 +132,7 @@ def child_journey(child_id: int, db: Session = Depends(get_db)):
     brand-new skill was added under an existing child — same idempotent,
     additive helper the progress endpoint already uses; it never changes an
     existing mastery's level."""
-    child = db.get(Child, child_id)
-    if not child:
-        raise HTTPException(404, "Child not found")
+    child = _get_owned_child(child_id, parent, db)
     engine.ensure_masteries(db, child)
 
     skills = db.scalars(select(Skill).order_by(Skill.order)).all()
@@ -227,10 +261,12 @@ def _struggle_signal_for(db: Session, child_id: int, ex: Exercise) -> tuple[Exer
     "/children/{child_id}/next-exercise",
     response_model=schemas.NextExerciseOut,
 )
-def next_exercise(child_id: int, db: Session = Depends(get_db)):
-    child = db.get(Child, child_id)
-    if not child:
-        raise HTTPException(404, "Child not found")
+def next_exercise(
+    child_id: int,
+    parent: Parent = Depends(get_current_parent),
+    db: Session = Depends(get_db),
+):
+    child = _get_owned_child(child_id, parent, db)
     ex = engine.select_next_exercise(db, child)
     if ex is None:
         return schemas.NextExerciseOut(exercise=None, all_caught_up=True)
@@ -245,13 +281,16 @@ def next_exercise(child_id: int, db: Session = Depends(get_db)):
     "/children/{child_id}/skills/{skill_id}/struggle-prediction",
     response_model=schemas.StruggleSignalOut,
 )
-def struggle_prediction(child_id: int, skill_id: int, db: Session = Depends(get_db)):
+def struggle_prediction(
+    child_id: int,
+    skill_id: int,
+    parent: Parent = Depends(get_current_parent),
+    db: Session = Depends(get_db),
+):
     """Direct inspection of the ML signal for a (child, skill), independent
     of exercise serving -- e.g. for the adult dashboard. Never applies an
     intervention itself, so `intervention` is always null here."""
-    child = db.get(Child, child_id)
-    if not child:
-        raise HTTPException(404, "Child not found")
+    child = _get_owned_child(child_id, parent, db)
     mastery = next((m for m in child.masteries if m.skill_id == skill_id), None)
     current_level = mastery.current_level if mastery else 1
     prediction = struggle_predictor.predict_for_child_skill(
@@ -266,10 +305,12 @@ def struggle_prediction(child_id: int, skill_id: int, db: Session = Depends(get_
 
 
 @router.post("/answers", response_model=schemas.AnswerOut)
-def submit_answer(payload: schemas.AnswerIn, db: Session = Depends(get_db)):
-    child = db.get(Child, payload.child_id)
-    if not child:
-        raise HTTPException(404, "Child not found")
+def submit_answer(
+    payload: schemas.AnswerIn,
+    parent: Parent = Depends(get_current_parent),
+    db: Session = Depends(get_db),
+):
+    child = _get_owned_child(payload.child_id, parent, db)
     ex = db.get(Exercise, payload.exercise_id)
     if not ex:
         raise HTTPException(404, "Exercise not found")
@@ -301,6 +342,7 @@ async def speech_answer(
     session_id: int | None = Form(default=None),
     lang: str = Form(default="ar"),
     audio: UploadFile = File(...),
+    parent: Parent = Depends(get_current_parent),
     db: Session = Depends(get_db),
 ):
     """A child speaks their answer instead of tapping. Transcribes with
@@ -314,9 +356,7 @@ async def speech_answer(
     if lang not in ("ar", "en"):
         raise HTTPException(400, "lang must be 'ar' or 'en'")
 
-    child = db.get(Child, child_id)
-    if not child:
-        raise HTTPException(404, "Child not found")
+    child = _get_owned_child(child_id, parent, db)
     ex = db.get(Exercise, exercise_id)
     if not ex:
         raise HTTPException(404, "Exercise not found")
@@ -331,7 +371,13 @@ async def speech_answer(
         )
 
     audio_bytes = await audio.read()
-    transcription = transcriber.transcribe(audio_bytes, language=lang)
+    # Vocabulary biasing: pin the answer language AND bias Whisper's decoding
+    # toward this exercise's expected labels, so short single-word answers in
+    # Arabic are far more likely to land on a real choice.
+    prompt = transcriber.build_initial_prompt(ex.options, lang)
+    transcription = transcriber.transcribe(
+        audio_bytes, language=lang, initial_prompt=prompt
+    )
     match = speech_match.best_option_match(transcription.text, ex.options, lang)
 
     if match.option_id is None or match.score < settings.speech_match_threshold:
@@ -428,11 +474,13 @@ def _build_session_summary(db: Session, session: SessionModel) -> schemas.Sessio
 @router.post(
     "/children/{child_id}/sessions/start", response_model=schemas.SessionStartOut
 )
-def start_session(child_id: int, db: Session = Depends(get_db)):
-    child = db.get(Child, child_id)
-    if not child:
-        raise HTTPException(404, "Child not found")
-    session = SessionModel(child_id=child_id)
+def start_session(
+    child_id: int,
+    parent: Parent = Depends(get_current_parent),
+    db: Session = Depends(get_db),
+):
+    child = _get_owned_child(child_id, parent, db)
+    session = SessionModel(child_id=child.id)
     db.add(session)
     db.commit()
     db.refresh(session)
@@ -445,9 +493,17 @@ def start_session(child_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/sessions/{session_id}/end", response_model=schemas.SessionSummaryOut)
-def end_session(session_id: int, db: Session = Depends(get_db)):
+def end_session(
+    session_id: int,
+    parent: Parent = Depends(get_current_parent),
+    db: Session = Depends(get_db),
+):
     session = db.get(SessionModel, session_id)
     if not session:
+        raise HTTPException(404, "Session not found")
+    # Verify the session's child belongs to this parent.
+    child = db.get(Child, session.child_id)
+    if not child or child.parent_id != parent.id:
         raise HTTPException(404, "Session not found")
     if session.ended_at is None:
         session.ended_at = _now()
@@ -457,9 +513,17 @@ def end_session(session_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/sessions/{session_id}/summary", response_model=schemas.SessionSummaryOut)
-def session_summary(session_id: int, db: Session = Depends(get_db)):
+def session_summary(
+    session_id: int,
+    parent: Parent = Depends(get_current_parent),
+    db: Session = Depends(get_db),
+):
     session = db.get(SessionModel, session_id)
     if not session:
+        raise HTTPException(404, "Session not found")
+    # Verify the session's child belongs to this parent.
+    child = db.get(Child, session.child_id)
+    if not child or child.parent_id != parent.id:
         raise HTTPException(404, "Session not found")
     return _build_session_summary(db, session)
 
@@ -467,15 +531,18 @@ def session_summary(session_id: int, db: Session = Depends(get_db)):
 @router.get(
     "/children/{child_id}/sessions", response_model=list[schemas.SessionSummaryOut]
 )
-def list_sessions(child_id: int, limit: int = 5, db: Session = Depends(get_db)):
+def list_sessions(
+    child_id: int,
+    limit: int = 5,
+    parent: Parent = Depends(get_current_parent),
+    db: Session = Depends(get_db),
+):
     """Recent session summaries, most recent first — powers the adult
     dashboard's "recent sessions" section."""
-    child = db.get(Child, child_id)
-    if not child:
-        raise HTTPException(404, "Child not found")
+    child = _get_owned_child(child_id, parent, db)
     sessions = db.scalars(
         select(SessionModel)
-        .where(SessionModel.child_id == child_id)
+        .where(SessionModel.child_id == child.id)
         .order_by(SessionModel.started_at.desc())
         .limit(limit)
     ).all()
@@ -502,11 +569,12 @@ def _goal_out(goal: Goal, skill: Skill, mastery: Mastery | None) -> schemas.Goal
 
 @router.post("/children/{child_id}/goals", response_model=schemas.GoalOut)
 def create_goal(
-    child_id: int, payload: schemas.GoalCreate, db: Session = Depends(get_db)
+    child_id: int,
+    payload: schemas.GoalCreate,
+    parent: Parent = Depends(get_current_parent),
+    db: Session = Depends(get_db),
 ):
-    child = db.get(Child, child_id)
-    if not child:
-        raise HTTPException(404, "Child not found")
+    child = _get_owned_child(child_id, parent, db)
     skill = db.get(Skill, payload.skill_id)
     if not skill:
         raise HTTPException(404, "Skill not found")
@@ -524,13 +592,15 @@ def create_goal(
 
 
 @router.get("/children/{child_id}/goals", response_model=list[schemas.GoalOut])
-def list_goals(child_id: int, db: Session = Depends(get_db)):
-    child = db.get(Child, child_id)
-    if not child:
-        raise HTTPException(404, "Child not found")
+def list_goals(
+    child_id: int,
+    parent: Parent = Depends(get_current_parent),
+    db: Session = Depends(get_db),
+):
+    child = _get_owned_child(child_id, parent, db)
     goals = db.scalars(
         select(Goal)
-        .where(Goal.child_id == child_id)
+        .where(Goal.child_id == child.id)
         .order_by(Goal.created_at.desc())
     ).all()
     out = []
@@ -544,9 +614,18 @@ def list_goals(child_id: int, db: Session = Depends(get_db)):
 
 
 @router.patch("/goals/{goal_id}", response_model=schemas.GoalOut)
-def update_goal(goal_id: int, payload: schemas.GoalUpdate, db: Session = Depends(get_db)):
+def update_goal(
+    goal_id: int,
+    payload: schemas.GoalUpdate,
+    parent: Parent = Depends(get_current_parent),
+    db: Session = Depends(get_db),
+):
     goal = db.get(Goal, goal_id)
     if not goal:
+        raise HTTPException(404, "Goal not found")
+    # Verify the goal's child belongs to this parent.
+    child = db.get(Child, goal.child_id)
+    if not child or child.parent_id != parent.id:
         raise HTTPException(404, "Goal not found")
     goal.status = payload.status
     if payload.status == "achieved" and goal.achieved_at is None:
@@ -569,10 +648,12 @@ def update_goal(goal_id: int, payload: schemas.GoalUpdate, db: Session = Depends
     "/children/{child_id}/progress",
     response_model=schemas.ChildProgressOut,
 )
-def child_progress(child_id: int, db: Session = Depends(get_db)):
-    child = db.get(Child, child_id)
-    if not child:
-        raise HTTPException(404, "Child not found")
+def child_progress(
+    child_id: int,
+    parent: Parent = Depends(get_current_parent),
+    db: Session = Depends(get_db),
+):
+    child = _get_owned_child(child_id, parent, db)
     engine.ensure_masteries(db, child)
 
     skills = db.scalars(select(Skill).order_by(Skill.order)).all()
@@ -642,7 +723,11 @@ def child_progress(child_id: int, db: Session = Depends(get_db)):
     "/children/{child_id}/daily",
     response_model=schemas.DailyRoutineOut,
 )
-def child_daily_routine(child_id: int, db: Session = Depends(get_db)):
+def child_daily_routine(
+    child_id: int,
+    parent: Parent = Depends(get_current_parent),
+    db: Session = Depends(get_db),
+):
     """The child's daily routine — daily streak, today's plan, and a recent
     activity calendar. A PURE READ-ONLY projection over the child's existing
     Attempt rows (see app/services/daily_routine.py): it never writes,
@@ -651,9 +736,7 @@ def child_daily_routine(child_id: int, db: Session = Depends(get_db)):
     The streak is gentle by construction: a missed day resets it to 0, and
     the UI only ever frames a fresh start positively — there is no "play or
     lose your streak" mechanic anywhere."""
-    child = db.get(Child, child_id)
-    if not child:
-        raise HTTPException(404, "Child not found")
+    child = _get_owned_child(child_id, parent, db)
     return schemas.DailyRoutineOut(**daily_routine.daily(db, child))
 
 
@@ -661,14 +744,16 @@ def child_daily_routine(child_id: int, db: Session = Depends(get_db)):
     "/children/{child_id}/parent-summary",
     response_model=schemas.ParentSummaryOut,
 )
-def child_parent_summary(child_id: int, db: Session = Depends(get_db)):
+def child_parent_summary(
+    child_id: int,
+    parent: Parent = Depends(get_current_parent),
+    db: Session = Depends(get_db),
+):
     """Today + this-week rollup for the parent dashboard. A PURE READ-ONLY
     projection over existing Attempt / Session / LevelUpEvent / Rewards rows —
     it never writes, never consults the engine, rewards, ML or speech layers,
     and adds no new source of truth (see app/services/parent_view.py)."""
-    child = db.get(Child, child_id)
-    if not child:
-        raise HTTPException(404, "Child not found")
+    child = _get_owned_child(child_id, parent, db)
     return schemas.ParentSummaryOut(**parent_view.summary(db, child))
 
 
@@ -676,11 +761,13 @@ def child_parent_summary(child_id: int, db: Session = Depends(get_db)):
     "/children/{child_id}/suggestions",
     response_model=list[schemas.ParentSuggestionOut],
 )
-def child_suggestions(child_id: int, db: Session = Depends(get_db)):
+def child_suggestions(
+    child_id: int,
+    parent: Parent = Depends(get_current_parent),
+    db: Session = Depends(get_db),
+):
     """Gentle, rule-based EDUCATIONAL TIPS for home activities. Read-only,
     optional ideas only — never a diagnosis, never medical or therapeutic
     advice (rules and wording live in app/services/parent_view.py)."""
-    child = db.get(Child, child_id)
-    if not child:
-        raise HTTPException(404, "Child not found")
+    child = _get_owned_child(child_id, parent, db)
     return [schemas.ParentSuggestionOut(**s) for s in parent_view.suggestions(db, child)]

@@ -33,10 +33,24 @@ logger = logging.getLogger(__name__)
 
 _STUB_ENV = "TIFL_SPEECH_STUB"
 _MODEL_SIZE_ENV = "TIFL_WHISPER_MODEL_SIZE"
-# "base" (~150MB) balances accuracy against a reasonable one-time download
-# for a local/offline family PC. Bump to "small" or "medium" via
-# TIFL_WHISPER_MODEL_SIZE for better accuracy at a larger download cost.
-DEFAULT_MODEL_SIZE = "base"
+# "small" (~460MB) is the accuracy/speed sweet spot for a local/offline
+# family PC and the best fit for Arabic: measured on identical audio, the
+# word "أحمر" scored 0.36 with "base" but 0.89 with "small". "medium"
+# (~1.5GB) is better still for Arabic but ~3x the download and noticeably
+# slower on CPU; "tiny"/"base" are weak on short Arabic words. Override via
+# TIFL_WHISPER_MODEL_SIZE (e.g. "medium") on a stronger machine -- no code
+# change needed.
+DEFAULT_MODEL_SIZE = "small"
+
+# Whisper decoding beam width. 1 is the cheapest but hurts short single
+# words (the app's answers). 3 costs little on short clips and is noticeably
+# more accurate for them.
+BEAM_SIZE = 3
+
+# The app always knows the exercise's language, so transcription is never
+# left to Whisper's auto-detection (measured: it turned Arabic words into
+# Latin/Cyrillic gibberish). Only these two codes are ever used.
+VALID_LANGUAGES = ("ar", "en")
 
 
 @dataclass
@@ -86,10 +100,36 @@ def _get_model():
     return _model
 
 
-def transcribe(audio_bytes: bytes, language: str) -> TranscriptionResult:
-    """`language` should be "ar" or "en" -- both are valid Whisper language
-    codes, and passing it explicitly (rather than auto-detecting) noticeably
-    improves accuracy for short, single-word children's answers."""
+def build_initial_prompt(options, lang: str) -> str:
+    """A short vocabulary hint built from an exercise's expected labels.
+
+    Whisper's `initial_prompt` biases decoding toward these words, which
+    helps a lot on short, single-word answers in a known language. Callers
+    pass the exercise's option labels in the answer language (the child's
+    preferred language, not the UI language)."""
+    key = "label_ar" if lang == "ar" else "label_en"
+    seen: set[str] = set()
+    words: list[str] = []
+    for opt in options or []:
+        word = (opt.get(key) or "").strip()
+        if word and word not in seen:
+            seen.add(word)
+            words.append(word)
+    return " ".join(words)
+
+
+def transcribe(
+    audio_bytes: bytes,
+    language: str,
+    initial_prompt: str | None = None,
+) -> TranscriptionResult:
+    """`language` must be an explicit known-language code ("ar" or "en" --
+    both valid Whisper codes). The language is pinned per exercise, never
+    auto-detected: passing it explicitly (rather than letting Whisper guess)
+    noticeably improves accuracy for short, single-word children's answers,
+    and auto-detection is dramatically worse (measured: Arabic words became
+    Latin/Cyrillic gibberish). `initial_prompt` (optional) biases decoding
+    toward the exercise's expected labels; see build_initial_prompt()."""
     if _forced_stub():
         return TranscriptionResult(text="", engine="stub")
 
@@ -97,10 +137,17 @@ def transcribe(audio_bytes: bytes, language: str) -> TranscriptionResult:
     if model is None:
         return TranscriptionResult(text="", engine="stub")
 
+    if language not in VALID_LANGUAGES:
+        raise ValueError(
+            f"language must be one of {VALID_LANGUAGES} (never auto-detect); "
+            f"got {language!r}"
+        )
+
     segments, _info = model.transcribe(
         io.BytesIO(audio_bytes),
         language=language,
-        beam_size=1,
+        initial_prompt=initial_prompt,
+        beam_size=BEAM_SIZE,
         vad_filter=True,
     )
     text = " ".join(seg.text.strip() for seg in segments).strip()
