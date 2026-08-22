@@ -95,6 +95,11 @@ backend/
                       today's plan, calendar — derived, read-only)
   verify_speech_matching.py deterministic check of the Arabic speech
                       normalization + fuzzy-matching pipeline (no audio)
+  verify_ml.py        deterministic check that the struggle-predictor
+                      pipeline works (artifact loads, features compute,
+                      predictions directionally sensible) — tests the
+                      plumbing, NOT clinical accuracy (the model is a
+                      proof-of-concept trained on simulated data)
   verify_answers.py   shared "what a correct/wrong answer looks like" helper
 frontend/
   src/
@@ -222,6 +227,21 @@ including the real outputs observed from Whisper (`أحمرو`, `أهماعوا`
 
 ```bash
 python verify_speech_matching.py
+```
+
+Verify the ML struggle predictor deterministically (no retraining, no
+database): the shipped artifact loads and has the expected shape,
+`extract_features` computes exact expected values from small hand-built
+histories (level filtering, trend sign, the 10-attempt window), and
+predictions on two clear-cut synthetic patterns lean the sensible direction —
+the struggling pattern scores a higher P(struggling) than the doing-well one.
+**This validates the pipeline plumbing (artifact loads, features compute,
+predictions are directionally sensible), NOT clinical accuracy** — the model
+is a proof-of-concept trained on simulated data (see "Machine Learning layer"
+below):
+
+```bash
+python verify_ml.py
 ```
 
 The verify scripts use a throwaway SQLite file each, so they never touch a
@@ -389,6 +409,7 @@ same flag *earlier* than the rule engine's window would fill.
 cd backend
 python -m app.ml.train_struggle_predictor      # generates data, trains, saves the model
 python -m app.ml.evaluate_struggle_predictor   # scores it against a FRESH, unseen synthetic set
+python verify_ml.py                            # plumbing check of the shipped artifact (no retraining)
 ```
 
 A trained artifact is committed at `app/ml/artifacts/struggle_predictor.joblib`
