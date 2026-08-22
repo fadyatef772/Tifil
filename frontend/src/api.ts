@@ -20,6 +20,21 @@ import type {
 
 const BASE = "/api";
 
+// ── Error class that preserves status for callers ────────────────────────
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public status: number | null, // null = network / proxy failure
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+
+  get serverUnreachable() {
+    return this.status === null || (this.status !== null && this.status >= 500);
+  }
+}
+
 // ── Auth state ────────────────────────────────────────────────────────────
 let _authToken: string | null = null;
 
@@ -36,25 +51,41 @@ function authHeaders(): Record<string, string> {
 }
 
 async function json<T>(res: Response): Promise<T> {
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  if (!res.ok) throw new ApiError(`${res.status} ${res.statusText}`, res.status);
   return res.json() as Promise<T>;
+}
+
+// Wraps fetch + json so network errors (ECONNREFUSED → proxy 500, CORS, DNS)
+// become ApiError with status=null instead of an opaque TypeError.
+async function apiFetch<T>(url: string, init?: RequestInit): Promise<T> {
+  try {
+    const res = await fetch(url, init);
+    return await json<T>(res);
+  } catch (err) {
+    if (err instanceof ApiError) throw err;
+    // TypeError: Failed to fetch (network/proxy down, CORS block, etc.)
+    throw new ApiError(
+      err instanceof Error ? err.message : "Network error",
+      null,
+    );
+  }
 }
 
 export const api = {
   // --- Auth ----------------------------------------------------------------
   signup: (email: string, password: string, name: string) =>
-    fetch(`${BASE}/auth/signup`, {
+    apiFetch<TokenOut>(`${BASE}/auth/signup`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password, name }),
-    }).then(json<TokenOut>),
+    }),
 
   login: (email: string, password: string) =>
-    fetch(`${BASE}/auth/login`, {
+    apiFetch<TokenOut>(`${BASE}/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password }),
-    }).then(json<TokenOut>),
+    }),
 
   me: () =>
     fetch(`${BASE}/auth/me`, { headers: authHeaders() }).then(json<Parent>),

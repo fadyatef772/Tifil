@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "./AuthContext";
+import { ApiError } from "../api";
 import { t } from "../i18n";
 import type { Lang } from "../types";
 
@@ -21,9 +22,9 @@ export default function SignupScreen({ lang, onSwitch }: { lang: Lang; onSwitch:
     try {
       await signup(email, password, name);
     } catch (err: any) {
-      const msg = String(err);
-      if (msg.includes("409")) setError(s.emailExists);
-      else if (msg.includes("422")) setError(s.passwordTooShort);
+      if (err instanceof ApiError && err.serverUnreachable) setError(s.serverUnreachable);
+      else if (err instanceof ApiError && err.status === 409) setError(s.emailExists);
+      else if (err instanceof ApiError && err.status === 422) setError(s.passwordTooShort);
       else setError(s.signupFailed);
     } finally {
       setBusy(false);

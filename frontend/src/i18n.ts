@@ -108,6 +108,7 @@ export const t = {
     emailExists: "البريد ده متسجل قبل كده",
     passwordTooShort: "كلمة المرور لازم 8 أحرف على الأقل",
     signupFailed: "فيه مشكلة في التسجيل، جرب تاني",
+    serverUnreachable: "السيرفر مش شغّال — تأكد إن الـ backend شغّال",
     childOf: "أطفالي",
   },
   en: {
@@ -216,6 +217,7 @@ export const t = {
     emailExists: "Email already registered",
     passwordTooShort: "Password must be at least 8 characters",
     signupFailed: "Something went wrong, please try again",
+    serverUnreachable: "Can't reach the server — make sure the backend is running",
     childOf: "My children",
   },
 } as const;
