@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "./AuthContext";
+import { ApiError } from "../api";
 import { t } from "../i18n";
 import type { Lang } from "../types";
 
@@ -19,8 +20,9 @@ export default function LoginScreen({ lang, onSwitch }: { lang: Lang; onSwitch: 
     setBusy(true);
     try {
       await login(email, password);
-    } catch {
-      setError(s.invalidCredentials);
+    } catch (err: any) {
+      if (err instanceof ApiError && err.serverUnreachable) setError(s.serverUnreachable);
+      else setError(s.invalidCredentials);
     } finally {
       setBusy(false);
     }
